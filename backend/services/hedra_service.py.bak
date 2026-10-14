@@ -1,0 +1,207 @@
+# -*- coding: utf-8 -*-
+"""
+HEDRA Character Video Service (services/hedra_service.py)
+Talking avatar video generation with synchronized audio/text speech.
+Supports real avatar reference image uploads and prompt/text scripts.
+"""
+
+import os
+import time
+import json
+import logging
+from typing import Optional, Dict, Any
+
+try:
+    import httpx
+    HAS_HTTPX = True
+except ImportError:
+    HAS_HTTPX = False
+    import urllib.request
+    import urllib.error
+
+logger = logging.getLogger("studio.hedra")
+logger.setLevel(logging.INFO)
+
+class HedraService:
+    def __init__(self):
+        self.api_key = os.getenv("HEDRA_API_KEY", "").strip()
+        self.base_url = os.getenv("HEDRA_BASE_URL", "https://api.hedra.com/v1").rstrip("/")
+
+    def is_configured(self) -> bool:
+        return bool(self.api_key)
+
+    def _get_headers(self) -> Dict[str, str]:
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "AI-Production-Studio/2.0",
+        }
+        if self.api_key:
+            headers["X-API-KEY"] = self.api_key
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    async def generate_avatar(
+        self,
+        prompt: Optional[str] = None,
+        voice_text: Optional[str] = None,
+        image_data: Optional[str] = None,
+        aspect_ratio: str = "1:1"
+    ) -> Dict[str, Any]:
+        """
+        Creates talking avatar generation job on Hedra.
+        Accepts real reference image (base64 data URI or public HTTPS URL) and script/prompt.
+        """
+        if not prompt and not voice_text:
+            return {
+                "success": False,
+                "status": "failed",
+                "status_code": 400,
+                "error": "A speech script or character prompt is required."
+            }
+
+        if not self.is_configured():
+            logger.warning("HEDRA_API_KEY is not configured.")
+            return {
+                "success": False,
+                "status": "failed",
+                "status_code": 401,
+                "error": "HEDRA_API_KEY is not configured in backend/.env. Please configure your API key to generate avatars.",
+                "provider": "hedra"
+            }
+
+        if not image_data:
+            return {
+                "success": False,
+                "status": "failed",
+                "status_code": 400,
+                "error": "Reference avatar image is required. Please upload or choose a portrait photo."
+            }
+
+        endpoint = f"{self.base_url}/characters"
+        payload: Dict[str, Any] = {
+            "avatarImage": image_data,
+            "aspectRatio": aspect_ratio,
+        }
+        if voice_text:
+            payload["text"] = voice_text
+        if prompt:
+            payload["prompt"] = prompt
+
+        start_time = time.time()
+
+        if HAS_HTTPX:
+            timeout = httpx.Timeout(connect=10.0, read=45.0, write=30.0, pool=30.0)
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    resp = await client.post(endpoint, headers=self._get_headers(), json=payload)
+                    latency = round((time.time() - start_time) * 1000, 2)
+                    req_id = resp.headers.get("x-request-id") or "N/A"
+
+                    logger.info("HEDRA POST /characters | Status: %s | Latency: %sms", resp.status_code, latency)
+
+                    if resp.status_code in (200, 201, 202):
+                        data = resp.json()
+                        job_id = data.get("jobId") or data.get("id") or data.get("characterId")
+                        if not job_id:
+                            return {
+                                "success": False,
+                                "status": "failed",
+                                "status_code": 502,
+                                "error": "Hedra API response did not contain a valid task ID",
+                                "raw": data
+                            }
+                        return {
+                            "success": True,
+                            "job_id": str(job_id),
+                            "status": "processing",
+                            "video_url": data.get("videoUrl") or data.get("url"),
+                            "provider": "hedra",
+                            "request_id": req_id
+                        }
+                    elif resp.status_code in (401, 403):
+                        return {
+                            "success": False,
+                            "status": "failed",
+                            "status_code": resp.status_code,
+                            "error": f"HEDRA Authentication error (HTTP {resp.status_code}): Invalid or unauthorized HEDRA_API_KEY."
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "status": "failed",
+                            "status_code": resp.status_code,
+                            "error": f"HEDRA API responded with HTTP {resp.status_code}: {resp.text[:200]}"
+                        }
+            except httpx.ConnectTimeout:
+                return {"success": False, "status_code": 504, "error": "Timeout connecting to Hedra API."}
+            except Exception as e:
+                return {"success": False, "status_code": 500, "error": f"Hedra client error: {str(e)}"}
+        else:
+            req_data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(endpoint, data=req_data, headers=self._get_headers(), method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    job_id = data.get("jobId") or data.get("id") or data.get("characterId")
+                    return {"success": True, "job_id": str(job_id), "status": "processing", "provider": "hedra"}
+            except urllib.error.HTTPError as e:
+                return {"success": False, "status_code": e.code, "error": f"Hedra HTTP {e.code}"}
+            except Exception as e:
+                return {"success": False, "status_code": 500, "error": str(e)}
+
+    async def check_status(self, job_id: str) -> Dict[str, Any]:
+        """
+        Polls Hedra character avatar job progress.
+        """
+        if not job_id:
+            return {"status": "failed", "error": "Job ID is required"}
+
+        if not self.is_configured():
+            return {"status": "failed", "error": "HEDRA_API_KEY is not configured in backend/.env."}
+
+        endpoint = f"{self.base_url}/characters/{job_id}"
+
+        if HAS_HTTPX:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(endpoint, headers=self._get_headers())
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        st = str(data.get("status", "")).lower()
+                        if st in ("completed", "ready", "done", "succeeded"):
+                            return {
+                                "status": "completed",
+                                "progress": 100,
+                                "video_url": data.get("videoUrl") or data.get("url"),
+                                "raw": data
+                            }
+                        elif st in ("failed", "error"):
+                            return {
+                                "status": "failed",
+                                "error": data.get("error") or data.get("message") or "Hedra avatar generation failed upstream",
+                                "raw": data
+                            }
+                        else:
+                            return {
+                                "status": "processing",
+                                "progress": data.get("progress"),
+                                "message": "Rendering character facial animation...",
+                                "raw": data
+                            }
+                    return {"status": "failed", "error": f"Hedra status check HTTP {resp.status_code}: {resp.text[:150]}"}
+            except Exception as e:
+                return {"status": "processing", "warning": f"Hedra status poll warning: {str(e)}"}
+        else:
+            req = urllib.request.Request(endpoint, headers=self._get_headers(), method="GET")
+            try:
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    st = str(data.get("status", "")).lower()
+                    if st in ("completed", "ready", "done"):
+                        return {"status": "completed", "video_url": data.get("videoUrl") or data.get("url")}
+                    return {"status": "processing"}
+            except Exception as e:
+                return {"status": "processing", "warning": str(e)}
+
+hedra_service = HedraService()

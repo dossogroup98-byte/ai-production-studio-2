@@ -1,0 +1,239 @@
+# -*- coding: utf-8 -*-
+"""
+Cloudflare Workers AI Service (services/cloudflare_service.py)
+Text-to-Image (T2I) and Image-to-Image (I2I) integration with Cloudflare Workers AI.
+Models:
+1. @cf/black-forest-labs/flux-1-schnell (T2I)
+2. @cf/stabilityai/stable-diffusion-xl-base-1.0 (T2I & I2I)
+3. @cf/bytedance/stable-diffusion-xl-lightning (T2I)
+"""
+
+import os
+import base64
+import json
+import logging
+from typing import Optional, Dict, Any
+
+try:
+    import httpx
+    HAS_HTTPX = True
+except ImportError:
+    HAS_HTTPX = False
+    import urllib.request
+    import urllib.error
+
+logger = logging.getLogger("studio.cloudflare")
+logger.setLevel(logging.INFO)
+
+class CloudflareService:
+    def __init__(self):
+        self.account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
+        self.api_token = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
+        self.default_model = "@cf/black-forest-labs/flux-1-schnell"
+
+    def is_configured(self) -> bool:
+        return bool(self.account_id and self.api_token)
+
+    def _get_headers(self) -> Dict[str, str]:
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "AI-Production-Studio/2.0",
+        }
+        if self.api_token:
+            headers["Authorization"] = f"Bearer {self.api_token}"
+        return headers
+
+    async def generate_text_to_image(
+        self,
+        prompt: str,
+        negative_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        num_steps: int = 4,
+        guidance: float = 7.5
+    ) -> Dict[str, Any]:
+        """
+        Generates image from text using Cloudflare Workers AI.
+        """
+        if not prompt or not prompt.strip():
+            return {
+                "success": False,
+                "status_code": 400,
+                "error": "Prompt cannot be empty for image generation"
+            }
+
+        if not self.is_configured():
+            return {
+                "success": False,
+                "status_code": 401,
+                "error": "CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN is not configured in backend/.env. Please configure credentials."
+            }
+
+        selected_model = model or self.default_model
+        endpoint = f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/run/{selected_model}"
+
+        payload: Dict[str, Any] = {
+            "prompt": prompt.strip(),
+        }
+
+        # Step count rules per model
+        if "flux" in selected_model:
+            payload["num_steps"] = min(max(num_steps, 1), 8)
+        else:
+            payload["num_steps"] = min(max(num_steps, 1), 20)
+
+        if negative_prompt:
+            payload["negative_prompt"] = negative_prompt.strip()
+        if guidance and "flux" not in selected_model:
+            payload["guidance"] = guidance
+
+        if HAS_HTTPX:
+            timeout = httpx.Timeout(connect=10.0, read=50.0, write=20.0, pool=30.0)
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    resp = await client.post(endpoint, headers=self._get_headers(), json=payload)
+
+                    if resp.status_code == 200:
+                        ct = resp.headers.get("content-type", "")
+                        if "image" in ct:
+                            b64_data = base64.b64encode(resp.content).decode("utf-8")
+                            return {
+                                "success": True,
+                                "image_url": f"data:{ct};base64,{b64_data}",
+                                "provider": "cloudflare",
+                                "model": selected_model,
+                                "prompt": prompt
+                            }
+                        else:
+                            data = resp.json()
+                            if "result" in data and "image" in data["result"]:
+                                return {
+                                  "success": True,
+                                  "image_url": f"data:image/png;base64,{data['result']['image']}",
+                                  "provider": "cloudflare",
+                                  "model": selected_model,
+                                  "prompt": prompt
+                                }
+                            return {"success": False, "status_code": 502, "error": "Unexpected JSON format from Cloudflare Workers AI", "raw": data}
+                    elif resp.status_code in (401, 403):
+                        return {
+                            "success": False,
+                            "status_code": resp.status_code,
+                            "error": f"Cloudflare Authentication Error (HTTP {resp.status_code}): Invalid CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID."
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "status_code": resp.status_code,
+                            "error": f"Cloudflare API returned HTTP {resp.status_code}: {resp.text[:250]}"
+                        }
+            except httpx.ConnectTimeout:
+                return {"success": False, "status_code": 504, "error": "Timeout connecting to Cloudflare Workers AI."}
+            except Exception as e:
+                return {"success": False, "status_code": 500, "error": f"Cloudflare client error: {str(e)}"}
+        else:
+            req_data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(endpoint, data=req_data, headers=self._get_headers(), method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=40) as resp:
+                    content = resp.read()
+                    ct = resp.headers.get("content-type", "image/png")
+                    b64_data = base64.b64encode(content).decode("utf-8")
+                    return {
+                        "success": True,
+                        "image_url": f"data:{ct};base64,{b64_data}",
+                        "provider": "cloudflare",
+                        "model": selected_model
+                    }
+            except urllib.error.HTTPError as e:
+                return {"success": False, "status_code": e.code, "error": f"Cloudflare HTTP {e.code}"}
+            except Exception as e:
+                return {"success": False, "status_code": 500, "error": str(e)}
+
+    async def generate_image_to_image(
+        self,
+        prompt: str,
+        image_data: str,
+        model: Optional[str] = None,
+        strength: float = 0.75,
+        guidance: float = 7.5
+    ) -> Dict[str, Any]:
+        """
+        Transforms an input reference image using Cloudflare Workers AI.
+        Requires a model that supports image conditioning (e.g. Stable Diffusion XL 1.0).
+        """
+        if not prompt or not prompt.strip():
+            return {"success": False, "status_code": 400, "error": "Prompt cannot be empty"}
+
+        if not image_data or not image_data.strip():
+            return {"success": False, "status_code": 400, "error": "Input reference image is required for Image-to-Image"}
+
+        selected_model = model or "@cf/stabilityai/stable-diffusion-xl-base-1.0"
+
+        # Explicit model capability check as required by user prompt
+        if "flux" in selected_model:
+            return {
+                "success": False,
+                "status_code": 400,
+                "error": "Model '@cf/black-forest-labs/flux-1-schnell' does not support Image-to-Image input on Cloudflare Workers AI. Please select 'Stable Diffusion XL 1.0' (@cf/stabilityai/stable-diffusion-xl-base-1.0) for I2I."
+            }
+
+        if not self.is_configured():
+            return {
+                "success": False,
+                "status_code": 401,
+                "error": "CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN is not configured in backend/.env."
+            }
+
+        endpoint = f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/run/{selected_model}"
+
+        # Clean base64 header if present
+        clean_b64 = image_data
+        if "base64," in image_data:
+            clean_b64 = image_data.split("base64,")[1]
+
+        try:
+            raw_bytes = base64.b64decode(clean_b64)
+            # Cloudflare Workers AI accepts uint8 array of image bytes in 'image' field
+            image_array = list(raw_bytes)
+        except Exception as e:
+            return {"success": False, "status_code": 400, "error": f"Invalid base64 image data: {str(e)}"}
+
+        payload = {
+            "prompt": prompt.strip(),
+            "image": image_array,
+            "strength": max(0.1, min(strength, 1.0)),
+        }
+
+        if HAS_HTTPX:
+            timeout = httpx.Timeout(connect=15.0, read=60.0, write=30.0, pool=30.0)
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    resp = await client.post(endpoint, headers=self._get_headers(), json=payload)
+                    if resp.status_code == 200:
+                        ct = resp.headers.get("content-type", "")
+                        if "image" in ct:
+                            b64_res = base64.b64encode(resp.content).decode("utf-8")
+                            return {
+                                "success": True,
+                                "image_url": f"data:{ct};base64,{b64_res}",
+                                "provider": "cloudflare",
+                                "model": selected_model
+                            }
+                        else:
+                            data = resp.json()
+                            if "result" in data and "image" in data["result"]:
+                                return {
+                                    "success": True,
+                                    "image_url": f"data:image/png;base64,{data['result']['image']}",
+                                    "provider": "cloudflare",
+                                    "model": selected_model
+                                }
+                            return {"success": False, "status_code": 502, "error": "Unexpected format from Workers AI"}
+                    else:
+                        return {"success": False, "status_code": resp.status_code, "error": f"Cloudflare API HTTP {resp.status_code}: {resp.text[:200]}"}
+            except Exception as e:
+                return {"success": False, "status_code": 500, "error": str(e)}
+        else:
+            return {"success": False, "status_code": 500, "error": "HTTP client error"}
+
+cloudflare_service = CloudflareService()

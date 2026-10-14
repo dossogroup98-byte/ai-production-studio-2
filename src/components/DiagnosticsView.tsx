@@ -1,0 +1,227 @@
+import React, { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '../utils/api';
+import { Activity, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Terminal, ShieldCheck, Server, HelpCircle, Copy, Check, Info } from 'lucide-react';
+
+export const DiagnosticsView: React.FC = () => {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
+
+  const runDiagnostics = async () => {
+    setLoading(true);
+    const baseUrl = getApiBaseUrl();
+
+    try {
+      const resp = await fetch(`${baseUrl}/api/studio/diagnostics/agnes`, {
+        method: 'POST',
+      });
+      const res = await resp.json();
+      setData(res);
+    } catch (err: any) {
+      console.error('Diagnostic error:', err);
+      setData({ error: err.message || 'Tanılama uç noktasına ulaşılamadı' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    runDiagnostics();
+  }, []);
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCmd(id);
+    setTimeout(() => setCopiedCmd(null), 2000);
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/20">
+              Gerçek Tanılama & Durum Analizi
+            </span>
+            <span className="text-xs text-zinc-400">Ücretsiz Canlı Bağlantı & Yapılandırma Denetimi</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">AGNES 503 / 403 & Sistem Tanılama Ekranı</h1>
+          <p className="text-sm text-zinc-400 mt-1 max-w-2xl">
+            Bu ekran hiçbir simülasyon veya sahte test içermez. Yalnızca çalışan sürecin ve sağlayıcı uç noktalarının gerçek yanıtlarını raporlar.
+          </p>
+        </div>
+
+        <button
+          onClick={runDiagnostics}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs shadow-lg shadow-amber-600/20 disabled:opacity-50 transition-all self-start sm:self-auto"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <span>{loading ? 'Yoklanıyor...' : 'Tanılamayı Yeniden Çalıştır'}</span>
+        </button>
+      </div>
+
+      {/* Grid of Verified Subsystems */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        {/* 1. Network & Port Alignment */}
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-zinc-200 font-semibold text-xs">
+              <Server className="w-4 h-4 text-indigo-400" />
+              <span>1. Sunucu ve Port Eşleşmesi</span>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              AKTİF
+            </span>
+          </div>
+
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between py-1.5 border-b border-zinc-800">
+              <span className="text-zinc-400">Aktif Sunucu Portu:</span>
+              <span className="font-mono text-zinc-200">
+                Port {data?.backend?.port || '3000'} (Node/Express Proxy) / Port 8011 (FastAPI)
+              </span>
+            </div>
+            <div className="flex justify-between py-1.5 border-b border-zinc-800">
+              <span className="text-zinc-400">Frontend İstek Hedefi:</span>
+              <span className="font-mono text-zinc-200">
+                {getApiBaseUrl() || '(Dahili /api Ters Proxy)'}
+              </span>
+            </div>
+            <p className="text-[11px] text-zinc-400 mt-2">
+              Yerel Windows bilgisayarınızda FastAPI backend <code className="text-indigo-300">8011</code> portunda başlatıldığında, stüdyo ters proxy ile veya doğrudan bu adres üzerinden iletişim kurar.
+            </p>
+          </div>
+        </div>
+
+        {/* 2. Environment Variables Check (Zero Secret Leak) */}
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-zinc-200 font-semibold text-xs">
+              <ShieldCheck className="w-4 h-4 text-indigo-400" />
+              <span>2. Ortam Değişkenleri Durumu (backend/.env)</span>
+            </div>
+            <span className="text-[10px] text-zinc-500 font-mono">Sıfır Anahtar Sızıntısı</span>
+          </div>
+
+          <div className="space-y-2 text-xs">
+            {data?.environment_variables?.map((env: any) => (
+              <div key={env.name} className="flex justify-between items-center py-1.5 border-b border-zinc-800">
+                <span className="font-mono text-zinc-300">{env.name}</span>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                    env.configured
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                  }`}
+                >
+                  {env.configured ? 'AYARLANDI' : 'AYARLANMADI'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Agnes Live Connectivity Probe Details */}
+      <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mb-8 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+            <Activity className="w-4 h-4 text-amber-400" />
+            <span>3. AGNES AI Canlı Bağlantı Denetimi (Ücretsiz Uç: /v1/models)</span>
+          </div>
+          {data?.agnes_probe && (
+            <span
+              className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                data.agnes_probe.status === 'CONNECTED'
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                  : data.agnes_probe.status === 'AUTH_FAILED'
+                  ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                  : data.agnes_probe.status === 'NOT_CONFIGURED'
+                  ? 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                  : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+              }`}
+            >
+              {data.agnes_probe.status}
+            </span>
+          )}
+        </div>
+
+        <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-2 text-xs">
+          <div className="flex items-start gap-2.5">
+            {data?.agnes_probe?.status === 'CONNECTED' ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+            ) : data?.agnes_probe?.status === 'AUTH_FAILED' ? (
+              <XCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            ) : data?.agnes_probe?.status === 'NOT_CONFIGURED' ? (
+              <HelpCircle className="w-5 h-5 text-zinc-400 shrink-0 mt-0.5" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            )}
+            <div>
+              <div className="font-semibold text-zinc-200">
+                {data?.agnes_probe?.status === 'CONNECTED'
+                  ? 'Agnes AI API Başarıyla Bağlandı (HTTP 200)'
+                  : data?.agnes_probe?.status === 'AUTH_FAILED'
+                  ? `Agnes AI Yetkilendirme Başarısız (HTTP ${data?.agnes_probe?.statusCode || '403'})`
+                  : data?.agnes_probe?.status === 'NOT_CONFIGURED'
+                  ? 'AGNES_API_KEY Yapılandırılmadı'
+                  : `Agnes API Durumu: ${data?.agnes_probe?.status}`}
+              </div>
+              <p className="text-zinc-400 mt-1 leading-relaxed">{data?.agnes_probe?.message}</p>
+
+              {data?.agnes_probe?.status === 'AUTH_FAILED' && (
+                <div className="mt-3 p-3 bg-red-950/40 border border-red-500/30 rounded-lg text-red-200 space-y-1.5 text-[11px]">
+                  <div className="font-semibold text-red-300">HTTP 403 / 401 Teşhis Açıklaması:</div>
+                  <ul className="list-disc list-inside space-y-1 text-red-200/90">
+                    <li><code className="text-red-300">backend/.env</code> dosyasındaki <strong>AGNES_API_KEY</strong> henüz gerçek anahtarınızla değiştirilmemiş olabilir (örnek/boş değer gönderildiğinde uzak API 403 döner).</li>
+                    <li>Agnes AI hesabınızda yeterli bakiye / kredi olmayabilir veya video üretim yetkisi etkinleştirilmemiş olabilir.</li>
+                    <li>API anahtarınız Agnes AI konsolunda belirli bir IP veya domaine kısıtlanmış olabilir.</li>
+                  </ul>
+                </div>
+              )}
+
+              {data?.agnes_probe?.statusCode && (
+                <div className="text-[11px] font-mono text-zinc-500 mt-2">
+                  HTTP Kodu: {data.agnes_probe.statusCode} • Gecikme: {data.agnes_probe.latencyMs}ms • İstek ID: {data.agnes_probe.requestId || 'N/A'} • Yoklanan Adres: {data.agnes_probe.endpointProbed || 'N/A'}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="text-[11px] text-zinc-400 bg-zinc-900 p-3 rounded-xl border border-zinc-800 flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Info className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <span>Bu yoklama video render kredisi tüketmez. Gerçek video üretimi yalnızca Video sekmesinden başlatıldığında çalıştırılır.</span>
+          </div>
+          <span className="font-semibold text-indigo-400 shrink-0">Ücretsiz Sağlık Yoklaması</span>
+        </div>
+      </div>
+
+      {/* Windows Launch Command Guide */}
+      <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+          <Terminal className="w-4 h-4 text-indigo-400" />
+          <span>Yerel Bilgisayarınızda Backend Başlatma Komutu</span>
+        </div>
+        <p className="text-xs text-zinc-400">
+          Uvicorn'u <code className="text-indigo-400 font-mono">--reload</code> bayrağı ve UTF-8 desteğiyle başlatmak eski bellek kodu (stale process) sorununu kökten engeller:
+        </p>
+
+        <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex items-center justify-between font-mono text-xs">
+          <span className="text-zinc-300">
+            <span className="text-indigo-400"># Windows:</span> python.exe -X utf8 -m uvicorn main:app --host 127.0.0.1 --port 8011 --reload
+          </span>
+          <button
+            onClick={() => copyToClipboard('python.exe -X utf8 -m uvicorn main:app --host 127.0.0.1 --port 8011 --reload', 'win')}
+            className="text-zinc-400 hover:text-white p-1"
+          >
+            {copiedCmd === 'win' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

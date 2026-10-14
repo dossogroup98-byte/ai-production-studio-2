@@ -1,0 +1,380 @@
+# -*- coding: utf-8 -*-
+"""
+AGNES AI Video Service (services/agnes_service.py)
+Production integration for AGNES Text-to-Video (T2V) API.
+Official Base URL: https://apihub.agnes-ai.com/v1 (or https://api.agnes.ai/v1)
+Endpoints:
+- POST /v1/videos (Dispatch video generation)
+- GET /v1/videos/{video_id} (Poll video task status)
+- GET /v1/models (Non-billing connectivity probe)
+"""
+
+import os
+import time
+import json
+import logging
+from typing import Optional, Dict, Any
+
+try:
+    import httpx
+    HAS_HTTPX = True
+except ImportError:
+    HAS_HTTPX = False
+    import urllib.request
+    import urllib.error
+
+logger = logging.getLogger("studio.agnes")
+logger.setLevel(logging.INFO)
+
+class AgnesService:
+    def __init__(self):
+        self.api_key = os.getenv("AGNES_API_KEY", "").strip()
+        # Default verified base URL. Users can override via AGNES_BASE_URL.
+        self.base_url = os.getenv("AGNES_BASE_URL", "https://apihub.agnes-ai.com/v1").rstrip("/")
+
+    def is_configured(self) -> bool:
+        # Key must exist and not be a placeholder value
+        return bool(self.api_key and "your_" not in self.api_key and "MY_" not in self.api_key)
+
+    def _build_url(self, path: str) -> str:
+        """
+        Safely builds the endpoint URL ensuring /v1 is never duplicated.
+        Handles both 'https://apihub.agnes-ai.com' and 'https://apihub.agnes-ai.com/v1'.
+        """
+        base = self.base_url.rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        clean_path = path.lstrip("/")
+        if clean_path.startswith("v1/"):
+            clean_path = clean_path[3:]
+        return f"{base}/v1/{clean_path}"
+
+    def _get_headers(self) -> Dict[str, str]:
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "AI-Production-Studio/2.0",
+        }
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+            headers["X-API-KEY"] = self.api_key
+        return headers
+
+    async def probe_connectivity(self) -> Dict[str, Any]:
+        """
+        Lightweight, non-billing probe to test Agnes AI host reachability and credentials.
+        Never consumes video credits.
+        """
+        if not self.is_configured():
+            return {
+                "tested": False,
+                "status": "NOT_CONFIGURED",
+                "status_code": None,
+                "message": "AGNES_API_KEY is not set or contains placeholder value in backend/.env."
+            }
+
+        endpoint = self._build_url("models")
+        start_time = time.time()
+
+        if HAS_HTTPX:
+            try:
+                async with httpx.AsyncClient(timeout=8.0) as client:
+                    resp = await client.get(endpoint, headers=self._get_headers())
+                    latency_ms = round((time.time() - start_time) * 1000, 2)
+                    req_id = resp.headers.get("x-request-id") or resp.headers.get("cf-ray") or "N/A"
+
+                    if resp.status_code == 200:
+                        return {
+                            "tested": True,
+                            "status": "CONNECTED",
+                            "status_code": 200,
+                            "latency_ms": latency_ms,
+                            "request_id": req_id,
+                            "endpoint_probed": endpoint,
+                            "message": "Agnes AI API connected successfully (HTTP 200)."
+                        }
+                    elif resp.status_code == 401:
+                        return {
+                            "tested": True,
+                            "status": "AUTH_FAILED",
+                            "status_code": 401,
+                            "request_id": req_id,
+                            "endpoint_probed": endpoint,
+                            "message": "HTTP 401 Unauthorized: Invalid AGNES_API_KEY format or expired token."
+                        }
+                    elif resp.status_code == 403:
+                        return {
+                            "tested": True,
+                            "status": "AUTH_FAILED",
+                            "status_code": 403,
+                            "request_id": req_id,
+                            "endpoint_probed": endpoint,
+                            "message": "HTTP 403 Forbidden: Key is unauthorized, account has no active balance/subscription, or IP is restricted."
+                        }
+                    elif resp.status_code == 503:
+                        return {
+                            "tested": True,
+                            "status": "SERVICE_UNAVAILABLE",
+                            "status_code": 503,
+                            "request_id": req_id,
+                            "endpoint_probed": endpoint,
+                            "message": "HTTP 503 Service Unavailable: Agnes GPU cluster is overloaded or undergoing maintenance."
+                        }
+                    else:
+                        return {
+                            "tested": True,
+                            "status": "HTTP_ERROR",
+                            "status_code": resp.status_code,
+                            "request_id": req_id,
+                            "endpoint_probed": endpoint,
+                            "message": f"Agnes API returned HTTP {resp.status_code} on probe."
+                        }
+            except httpx.ConnectTimeout:
+                return {"tested": True, "status": "TIMEOUT", "status_code": 504, "message": f"Connection timed out reaching {endpoint}."}
+            except httpx.ConnectError as e:
+                return {"tested": True, "status": "NETWORK_ERROR", "status_code": 502, "message": f"DNS/Network resolution failed for {self.base_url}: {str(e)}"}
+            except Exception as e:
+                return {"tested": True, "status": "ERROR", "status_code": 500, "message": str(e)}
+        else:
+            req = urllib.request.Request(endpoint, headers=self._get_headers(), method="GET")
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    return {"tested": True, "status": "CONNECTED", "status_code": resp.code, "message": "Agnes AI API connected successfully."}
+            except urllib.error.HTTPError as e:
+                if e.code in (401, 403):
+                    return {"tested": True, "status": "AUTH_FAILED", "status_code": e.code, "message": f"Authentication failed (HTTP {e.code})"}
+                elif e.code == 503:
+                    return {"tested": True, "status": "SERVICE_UNAVAILABLE", "status_code": 503, "message": "Upstream 503 Service Unavailable"}
+                return {"tested": True, "status": "HTTP_ERROR", "status_code": e.code, "message": f"HTTP {e.code}"}
+            except Exception as e:
+                return {"tested": True, "status": "ERROR", "status_code": 500, "message": str(e)}
+
+    async def generate_text_to_video(
+        self,
+        prompt: str,
+        duration: int = 5,
+        model: str = "agnes-video-2.5",
+        aspect_ratio: str = "16:9"
+    ) -> Dict[str, Any]:
+        """
+        Dispatches a Text-to-Video generation task to Agnes AI.
+        Does NOT generate fake responses or mock tasks.
+        """
+        if not prompt or not prompt.strip():
+            return {
+                "success": False,
+                "status": "failed",
+                "status_code": 400,
+                "error": "Prompt cannot be empty"
+            }
+
+        if not self.is_configured():
+            return {
+                "success": False,
+                "status": "failed",
+                "status_code": 401,
+                "error": "AGNES_API_KEY is not configured in backend/.env. Please configure your key to generate videos.",
+                "provider": "agnes"
+            }
+
+        seconds = 10 if duration >= 8 else 5
+        payload: Dict[str, Any] = {
+            "model": model,
+            "prompt": prompt.strip(),
+            "seconds": seconds,
+            "mode": "text"
+        }
+        if aspect_ratio:
+            payload["aspect_ratio"] = aspect_ratio
+
+        endpoint = self._build_url("videos")
+        start_time = time.time()
+
+        if HAS_HTTPX:
+            timeout = httpx.Timeout(connect=12.0, read=50.0, write=20.0, pool=30.0)
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    response = await client.post(endpoint, headers=self._get_headers(), json=payload)
+                    latency = round((time.time() - start_time) * 1000, 2)
+                    req_id = response.headers.get("x-request-id") or response.headers.get("cf-ray") or "N/A"
+
+                    logger.info("AGNES POST %s | Status: %s | Latency: %sms | Request-ID: %s", endpoint, response.status_code, latency, req_id)
+
+                    if response.status_code in (200, 201, 202):
+                        data = response.json()
+                        job_id = data.get("id") or data.get("video_id") or data.get("task_id")
+                        if not job_id:
+                            return {
+                                "success": False,
+                                "status": "failed",
+                                "status_code": 502,
+                                "error": "Agnes AI response did not contain a valid task ID",
+                                "raw": data
+                            }
+                        return {
+                            "success": True,
+                            "job_id": str(job_id),
+                            "status": data.get("status", "processing"),
+                            "video_url": data.get("video_url") or data.get("output_url"),
+                            "request_id": req_id,
+                            "provider": "agnes",
+                            "latency_ms": latency
+                        }
+                    elif response.status_code == 401:
+                        return {
+                            "success": False,
+                            "status": "failed",
+                            "status_code": 401,
+                            "request_id": req_id,
+                            "error": "AGNES 401 Unauthorized: Invalid API key format or expired credentials. Check AGNES_API_KEY in backend/.env."
+                        }
+                    elif response.status_code == 403:
+                        return {
+                            "success": False,
+                            "status": "failed",
+                            "status_code": 403,
+                            "request_id": req_id,
+                            "error": f"AGNES 403 Forbidden: Request to {endpoint} was rejected. Verify account active balance, model access permissions, and IP restrictions."
+                        }
+                    elif response.status_code == 404:
+                        return {
+                            "success": False,
+                            "status": "failed",
+                            "status_code": 404,
+                            "request_id": req_id,
+                            "error": f"AGNES 404 Not Found: Model '{model}' or endpoint '{endpoint}' not found on Agnes AI."
+                        }
+                    elif response.status_code == 429:
+                        return {
+                            "success": False,
+                            "status": "failed",
+                            "status_code": 429,
+                            "request_id": req_id,
+                            "error": "AGNES 429 Rate Limit Exceeded: Too many concurrent generation requests. Please wait."
+                        }
+                    elif response.status_code == 503:
+                        try:
+                            err_body = response.json()
+                            msg = err_body.get("message") or err_body.get("error") or "Service Unavailable"
+                        except Exception:
+                            msg = response.text[:200]
+                        return {
+                            "success": False,
+                            "status": "failed",
+                            "status_code": 503,
+                            "request_id": req_id,
+                            "error": f"AGNES 503 Service Unavailable: GPU cluster queue is full. Upstream detail: {msg}"
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "status": "failed",
+                            "status_code": response.status_code,
+                            "request_id": req_id,
+                            "error": f"AGNES HTTP {response.status_code}: {response.text[:250]}"
+                        }
+            except httpx.ConnectTimeout:
+                return {"success": False, "status": "failed", "status_code": 504, "error": f"Connection timed out reaching Agnes API at {endpoint}."}
+            except httpx.ConnectError as e:
+                return {"success": False, "status": "failed", "status_code": 502, "error": f"Connection error reaching Agnes AI: {str(e)}"}
+            except Exception as e:
+                return {"success": False, "status": "failed", "status_code": 500, "error": f"Agnes client error: {str(e)}"}
+        else:
+            req_data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(endpoint, data=req_data, headers=self._get_headers(), method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    resp_data = json.loads(resp.read().decode("utf-8"))
+                    job_id = resp_data.get("id") or resp_data.get("video_id") or resp_data.get("task_id")
+                    return {
+                        "success": True,
+                        "job_id": str(job_id),
+                        "status": resp_data.get("status", "processing"),
+                        "video_url": resp_data.get("video_url") or resp_data.get("output_url"),
+                        "provider": "agnes"
+                    }
+            except urllib.error.HTTPError as e:
+                err_text = e.read().decode("utf-8") if e.fp else str(e)
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "status_code": e.code,
+                    "error": f"AGNES HTTP {e.code}: {err_text[:200]}"
+                }
+            except Exception as e:
+                return {"success": False, "status": "failed", "status_code": 500, "error": str(e)}
+
+    async def check_status(self, job_id: str) -> Dict[str, Any]:
+        """
+        Polls the status of an Agnes video task.
+        Uses GET /v1/videos/{video_id}.
+        """
+        if not job_id:
+            return {"status": "failed", "error": "Job ID is required"}
+
+        if not self.is_configured():
+            return {"status": "failed", "error": "AGNES_API_KEY is not configured in backend/.env."}
+
+        endpoint = self._build_url(f"videos/{job_id}")
+
+        if HAS_HTTPX:
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.get(endpoint, headers=self._get_headers())
+                    if resp.status_code == 404:
+                        # Try alternative agnesapi query format documented by Agnes AI
+                        alt_url = f"{self.base_url.replace('/v1', '')}/agnesapi?video_id={job_id}"
+                        try:
+                            alt_resp = await client.get(alt_url, headers=self._get_headers())
+                            if alt_resp.status_code == 200:
+                                resp = alt_resp
+                        except Exception:
+                            pass
+
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        raw_status = str(data.get("status", "")).lower()
+
+                        if raw_status in ("completed", "succeeded", "success", "done"):
+                            return {
+                                "status": "completed",
+                                "progress": 100,
+                                "video_url": data.get("video_url") or data.get("output_url") or data.get("url"),
+                                "raw": data
+                            }
+                        elif raw_status in ("failed", "error"):
+                            return {
+                                "status": "failed",
+                                "error": data.get("error") or data.get("message") or "Video generation failed upstream",
+                                "raw": data
+                            }
+                        else:
+                            return {
+                                "status": "processing",
+                                "progress": data.get("progress"),
+                                "message": data.get("message", "Processing video on Agnes GPU cluster..."),
+                                "raw": data
+                            }
+                    elif resp.status_code == 404:
+                        return {"status": "failed", "error": f"Video task '{job_id}' not found on Agnes AI (HTTP 404)."}
+                    elif resp.status_code == 503:
+                        return {"status": "processing", "warning": "Transient 503 on status check; will retry query."}
+                    else:
+                        return {"status": "failed", "error": f"Status check HTTP {resp.status_code}: {resp.text[:150]}"}
+            except Exception as e:
+                return {"status": "processing", "warning": f"Network check error: {str(e)}"}
+        else:
+            req = urllib.request.Request(endpoint, headers=self._get_headers(), method="GET")
+            try:
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    raw_status = str(data.get("status", "")).lower()
+                    if raw_status in ("completed", "succeeded", "success"):
+                        return {"status": "completed", "video_url": data.get("video_url") or data.get("output_url")}
+                    elif raw_status in ("failed", "error"):
+                        return {"status": "failed", "error": data.get("error") or "Failed upstream"}
+                    return {"status": "processing"}
+            except Exception as e:
+                return {"status": "processing", "warning": str(e)}
+
+agnes_service = AgnesService()
