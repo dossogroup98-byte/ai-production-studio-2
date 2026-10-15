@@ -11,7 +11,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { CheckCircle2, ShieldCheck, Activity, Terminal } from 'lucide-react';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<StudioTab>('video');
+  const [currentTab, setCurrentTab] = useState<StudioTab>('image');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [items, setItems] = useState<GenerationItem[]>(() => {
     try {
