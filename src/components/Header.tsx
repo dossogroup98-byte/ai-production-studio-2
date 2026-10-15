@@ -32,29 +32,14 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setTab, openSettings
         {/* Navigation Tabs */}
         <nav className="flex items-center gap-1 bg-zinc-900/80 p-1 rounded-xl border border-zinc-800">
           <button
-            onClick={() => setTab('video')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              currentTab === 'video'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
-            }`}
+            disabled
+            title="Video üretimi yakında eklenecek"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-500 opacity-60 cursor-not-allowed"
           >
             <Video className="w-3.5 h-3.5" />
-            <span>Video (AGNES)</span>
+            <span>Video Üretimi (Yakında)</span>
           </button>
-
-          <button
-            onClick={() => setTab('avatar')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              currentTab === 'avatar'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
-            }`}
-          >
-            <UserSquare2 className="w-3.5 h-3.5" />
-            <span>Avatars (Hedra)</span>
-          </button>
-
+                    
           <button
             onClick={() => setTab('image')}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
@@ -65,18 +50,6 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setTab, openSettings
           >
             <ImageIcon className="w-3.5 h-3.5" />
             <span>Images (Cloudflare)</span>
-          </button>
-
-          <button
-            onClick={() => setTab('diagnostics')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              currentTab === 'diagnostics'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/60'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5" />
-            <span>AGNES 503 Diagnostics</span>
           </button>
 
           <button
