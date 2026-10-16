@@ -15,6 +15,41 @@ export const MultiImageComposition: React.FC = () => {
         return () => urls.forEach(url => URL.revokeObjectURL(url));
     }, [files]);
 
+
+    const resizeImage = (file: File): Promise<string> =>
+        new Promise((resolve, reject) => {
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+
+            img.onload = () => {
+                const scale = Math.min(1, 512 / img.width, 512 / img.height);
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.round(img.width * scale));
+                canvas.height = Math.max(1, Math.round(img.height * scale));
+
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('Görsel dönüştürülemedi.'));
+                    return;
+                }
+
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                URL.revokeObjectURL(url);
+                resolve(canvas.toDataURL('image/jpeg', 0.9));
+            };
+
+            img.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error('Görsel okunamadı.'));
+            };
+
+            img.src = url;
+        });
+
+
+
+
     const generate = async () => {
         if (files.length < 2 || files.length > 4) {
             setError('Lütfen 2–4 referans görsel seç.');
@@ -30,19 +65,19 @@ export const MultiImageComposition: React.FC = () => {
         setResult('');
 
         try {
-            const images = await Promise.all(
-                files.map(file => new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(String(reader.result));
-                    reader.onerror = () => reject(new Error('Görsel okunamadı.'));
-                    reader.readAsDataURL(file);
-                }))
-            );
+            const images = await Promise.all(files.map(resizeImage));
+
+            const safePrompt = `${prompt.trim()}
+
+            Use each supplied reference image as a separate reference.
+            Preserve each person's distinct facial identity; do not merge faces.
+            Create exactly ONE continuous photograph in a single frame.
+            No collage, split screen, diptych, panels, borders, or duplicate images.`;
 
             const response = await fetch('/api/studio/multi-reference', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt, images }),
+                body: JSON.stringify({ prompt: safePrompt, images }),
             });
 
             const data = await response.json();
@@ -99,7 +134,7 @@ export const MultiImageComposition: React.FC = () => {
                     rows={5}
                     value={prompt}
                     onChange={e => setPrompt(e.target.value)}
-                    placeholder="Örneğin: İlk görseldeki adam ve ikinci görseldeki kadın, üçüncü görseldeki sahilde yan yana dursun. Tek, gerçekçi fotoğraf oluştur."
+                    placeholder="Görsel 1'deki kişinin yüz kimliğini ve Görsel 2'deki kişinin yüz kimliğini ayrı ayrı koru. Görsel 3'teki ortamda yan yana dursunlar. Tek bir kesintisiz, gerçekçi fotoğraf oluştur. Bölünmüş ekran, kolaj, çift kare veya ikinci bir görüntü oluşturma. Her kişinin yüzünü kendi referansıyla eşleştir."
                     className="block mt-2 w-full rounded-xl bg-zinc-900 border border-zinc-700 p-3 text-white"
                 />
             </label>
