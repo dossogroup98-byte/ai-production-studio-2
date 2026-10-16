@@ -939,6 +939,154 @@ async function startServer() {
   });
 
 
+
+  app.post('/api/studio/multi-reference-start-end', async (req: Request, res: Response) => {
+    try {
+      const { prompt, referenceImages, startImage, endImage } = req.body;
+
+      const cfAccount = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+      const cfToken = (process.env.CLOUDFLARE_API_TOKEN || '').trim();
+
+      if (typeof prompt !== 'string' || !prompt.trim()) {
+        return res.status(400).json({ success: false, error: 'Prompt gerekli.' });
+      }
+
+      if (!Array.isArray(referenceImages)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Referans görsel listesi geçersiz.',
+        });
+      }
+
+      const images: { value: string; role: string }[] = [];
+
+      referenceImages.forEach((value: unknown, i: number) => {
+        if (typeof value === 'string') {
+          images.push({ value, role: `Referans görsel ${i + 1}` });
+        }
+      });
+
+      if (typeof startImage === 'string' && startImage) {
+        images.push({ value: startImage, role: 'Başlangıç karesi' });
+      }
+
+      if (typeof endImage === 'string' && endImage) {
+        images.push({ value: endImage, role: 'Bitiş karesi' });
+      }
+
+      if (images.length < 1 || images.length > 4) {
+        return res.status(400).json({
+          success: false,
+          error: 'Toplam 1 ile 4 arasında görsel seçmelisin.',
+        });
+      }
+
+      if (!cfAccount || !cfToken) {
+        return res.status(401).json({
+          success: false,
+          error: 'Cloudflare ayarları eksik.',
+        });
+      }
+
+      const form = new FormData();
+
+      const roles = images.map((image, i) => `Görsel ${i + 1}: ${image.role}`).join('\n');
+      form.append(
+        'prompt',
+        `${prompt.trim()}\n\nGörsel rolleri:\n${roles}\nBütün görselleri bu rollere göre dikkate al ve tek bir nihai görsel üret.`
+      );
+
+      for (let i = 0; i < images.length; i++) {
+        const match = images[i].value.match(
+          /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/
+        );
+
+        if (!match) {
+          return res.status(400).json({
+            success: false,
+            error: `${images[i].role} base64 formatında değil.`,
+          });
+        }
+
+        const bytes = Buffer.from(match[2], 'base64');
+
+        if (!bytes.length) {
+          return res.status(400).json({
+            success: false,
+            error: `${images[i].role} boş.`,
+          });
+        }
+
+        form.append(
+          `input_image_${i}`,
+          new Blob([new Uint8Array(bytes)], { type: match[1] }),
+          `image-${i + 1}.${match[1].split('/')[1].replace('jpeg', 'jpg')}`
+        );
+      }
+
+      const cfResp = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${cfAccount}/ai/run/@cf/black-forest-labs/flux-2-klein-4b`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${cfToken}` },
+          body: form,
+        }
+      );
+
+      if (!cfResp.ok) {
+        const errorText = await cfResp.text();
+        console.error('[Multi-reference Start-End]', cfResp.status, errorText.slice(0, 800));
+
+        return res.status(cfResp.status).json({
+          success: false,
+          error: `Cloudflare HTTP ${cfResp.status}: ${errorText.slice(0, 400)}`,
+        });
+      }
+
+      const contentType = cfResp.headers.get('content-type') || '';
+
+      if (contentType.toLowerCase().includes('image/')) {
+        const bytes = Buffer.from(await cfResp.arrayBuffer());
+
+        return res.json({
+          success: true,
+          image_url: `data:${contentType};base64,${bytes.toString('base64')}`,
+          provider: 'cloudflare',
+          model: '@cf/black-forest-labs/flux-2-klein-4b',
+        });
+      }
+
+      const json = await cfResp.json() as any;
+      const image = json?.result?.image ?? json?.image;
+
+      if (typeof image === 'string' && image.length > 0) {
+        return res.json({
+          success: true,
+          image_url: image.startsWith('data:')
+            ? image
+            : `data:image/jpeg;base64,${image}`,
+          provider: 'cloudflare',
+          model: '@cf/black-forest-labs/flux-2-klein-4b',
+        });
+      }
+
+      return res.status(502).json({
+        success: false,
+        error: 'Üretilen görsel yanıtında bulunamadı.',
+      });
+    } catch (err) {
+      console.error('[Multi-reference Start-End] Error:', err);
+
+      return res.status(500).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'Görsel üretimi başarısız.',
+      });
+    }
+  });
+
+
+
+
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`AI Production Studio server running on port ${PORT}`);
   });

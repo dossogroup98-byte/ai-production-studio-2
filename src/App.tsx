@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { StudioTab, GenerationItem } from './types';
 import { Header } from './components/Header';
 import { VideoStudio } from './components/VideoStudio';
 import { AvatarStudio } from './components/AvatarStudio';
 import { ImageStudio } from './components/ImageStudio';
 import { MultiReference } from './components/MultiReference';
+import { MultiReferenceStartEnd } from './components/MultiReferenceStartEnd';
+import { MultiImageComposition } from './components/MultiImageComposition';
 import { TextToImageFrames } from './components/TextToImage';
 import { ImageToImageFrames } from './components/ImageToImage';
 import { DiagnosticsView } from './components/DiagnosticsView';
@@ -115,6 +117,8 @@ export default function App() {
           <ImageStudio onItemCreated={handleItemCreated} />
         )}
         {currentTab === 'multi-reference' && <MultiReference />}
+      {currentTab === 'multi-reference-start-end' && <MultiReferenceStartEnd />}
+        {currentTab === 'multi-image-composition' && <MultiImageComposition />}
         {currentTab === 'text-to-image-frames' && <TextToImageFrames />}
         {currentTab === 'image-to-image-frames' && <ImageToImageFrames />}
         {currentTab === 'diagnostics' && <DiagnosticsView />}
@@ -137,7 +141,7 @@ export default function App() {
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             <span>Studio Server: Online (Port 3000 / 8011)</span>
           </div>
-          <span className="text-zinc-600 hidden sm:inline">•</span>
+          <span className="text-zinc-600 hidden sm:inline">â€¢</span>
           <div className="hidden sm:flex items-center gap-1 text-zinc-400">
             <span>AGNES 503 Guard:</span>
             <span className="text-emerald-400 font-mono">BOM-Clean / Async-Active</span>
@@ -165,6 +169,9 @@ export default function App() {
     </div>
   );
 }
+
+
+
 
 
 

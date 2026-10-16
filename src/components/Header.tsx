@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { StudioTab } from '../types';
 import { Video, UserSquare2, Image as ImageIcon, Activity, Code2, Settings, Sparkles, FolderArchive, WandSparkles } from 'lucide-react';
 
@@ -25,7 +25,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setTab, openSettings
                 PROD v2.0
               </span>
             </div>
-            <p className="text-xs text-zinc-400 hidden sm:block">AGNES Video • Hedra Avatars • Cloudflare AI</p>
+            <p className="text-xs text-zinc-400 hidden sm:block">AGNES Video â€¢ Hedra Avatars â€¢ Cloudflare AI</p>
           </div>
         </div>
 
@@ -59,6 +59,9 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setTab, openSettings
 </button>
 <button onClick={() => setTab('text-to-image-frames')} className="px-3 py-2 rounded-lg text-xs text-zinc-300 hover:bg-zinc-800">
   Text + Start/End
+</button>
+<button onClick={() => setTab('multi-reference-start-end')} className="px-3 py-2 rounded-lg text-xs text-zinc-300 hover:bg-zinc-800">
+  Multi-Reference Start / End
 </button>
 <button onClick={() => setTab('image-to-image-frames')} className="px-3 py-2 rounded-lg text-xs text-zinc-300 hover:bg-zinc-800">
   Character Refs
@@ -103,5 +106,8 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setTab, openSettings
     </header>
   );
 };
+
+
+
 
 

@@ -1,4 +1,4 @@
-﻿export type StudioTab = 'video' | 'avatar' | 'image' | 'huggingface-i2v' | 'multi-reference' | 'text-to-image-frames' | 'image-to-image-frames' | 'diagnostics' | 'monorepo' | 'gallery';
+﻿export type StudioTab = 'video' | 'avatar' | 'image' | 'huggingface-i2v' | 'multi-reference' | 'multi-image-composition' | 'multi-reference-start-end' | 'text-to-image-frames' | 'image-to-image-frames' | 'diagnostics' | 'monorepo' | 'gallery';
 
 export interface GenerationItem {
   id: string;
@@ -43,5 +43,7 @@ export interface StudioSettings {
   geminiKey: string;
   customBackendUrl: string;
 }
+
+
 
 
