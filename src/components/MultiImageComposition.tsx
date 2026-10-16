@@ -69,18 +69,18 @@ export const MultiImageComposition: React.FC = () => {
 
             const safePrompt = `${prompt.trim()}
 
-           IMPORTANT:
-           Reference image 1 represents PERSON 1.
-           Reference image 2 represents PERSON 2.
-           Reference image 3 represents PERSON 3.
-           Include ALL THREE people in the final image.
-           Exactly three distinct people must be visible simultaneously.
-           Do not omit, merge, duplicate, or replace any person.
-           Preserve each person's original face, hairstyle, hair length,
-           hairline, facial hair, age, and identity from their own reference.
-           Do not add hair, change hairstyles, or invent facial features.
-           Place all three people naturally together in ONE realistic photograph.
-           Full single frame only. No collage, split screen, panels, or duplicate images.`;
+           REALISTIC BODY PROPORTIONS:
+           All people must have anatomically correct, realistic body proportions.
+           The adult man and woman must have natural adult body proportions.
+           The 10-year-old child must have realistic child anatomy and be
+           noticeably shorter than both adults.
+           Use natural head-to-body ratios for each person's age.
+           Correct shoulder width, torso length, arm length, leg length,
+           hands, feet, and neck proportions.
+           All people must stand naturally on the same ground plane.
+           No oversized heads, tiny bodies, elongated limbs, distorted torsos,
+           uneven body scale, or unnatural proportions.
+           Preserve every person's face and identity exactly as specified above.
 
             const response = await fetch('/api/studio/multi-reference', {
                 method: 'POST',
