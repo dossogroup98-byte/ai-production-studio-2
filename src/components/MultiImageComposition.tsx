@@ -69,10 +69,18 @@ export const MultiImageComposition: React.FC = () => {
 
             const safePrompt = `${prompt.trim()}
 
-            Use each supplied reference image as a separate reference.
-            Preserve each person's distinct facial identity; do not merge faces.
-            Create exactly ONE continuous photograph in a single frame.
-            No collage, split screen, diptych, panels, borders, or duplicate images.`;
+           IMPORTANT:
+           Reference image 1 represents PERSON 1.
+           Reference image 2 represents PERSON 2.
+           Reference image 3 represents PERSON 3.
+           Include ALL THREE people in the final image.
+           Exactly three distinct people must be visible simultaneously.
+           Do not omit, merge, duplicate, or replace any person.
+           Preserve each person's original face, hairstyle, hair length,
+           hairline, facial hair, age, and identity from their own reference.
+           Do not add hair, change hairstyles, or invent facial features.
+           Place all three people naturally together in ONE realistic photograph.
+           Full single frame only. No collage, split screen, panels, or duplicate images.`;
 
             const response = await fetch('/api/studio/multi-reference', {
                 method: 'POST',
