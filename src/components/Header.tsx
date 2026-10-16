@@ -1,6 +1,6 @@
 import React from 'react';
 import { StudioTab } from '../types';
-import { Video, UserSquare2, Image as ImageIcon, Activity, Code2, Settings, Sparkles, FolderArchive } from 'lucide-react';
+import { Video, UserSquare2, Image as ImageIcon, Activity, Code2, Settings, Sparkles, FolderArchive, WandSparkles } from 'lucide-react';
 
 interface HeaderProps {
   currentTab: StudioTab;
@@ -31,14 +31,16 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setTab, openSettings
 
         {/* Navigation Tabs */}
         <nav className="flex items-center gap-1 bg-zinc-900/80 p-1 rounded-xl border border-zinc-800">
-          <button
-            disabled
-            title="Video üretimi yakında eklenecek"
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-500 opacity-60 cursor-not-allowed"
-          >
-            <Video className="w-3.5 h-3.5" />
-            <span>Video Üretimi (Yakında)</span>
-          </button>
+                  <button
+                      onClick={() => setTab('huggingface-i2v')}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${currentTab === 'huggingface-i2v'
+                              ? 'bg-violet-600 text-white shadow-sm'
+                              : 'text-zinc-400 hover:text-violet-300 hover:bg-zinc-800/60'
+                          }`}
+                  >
+                      <WandSparkles className="w-3.5 h-3.5" />
+                      <span>AI Image-to-Video</span>
+                  </button>
                     
           <button
             onClick={() => setTab('image')}
@@ -52,7 +54,16 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setTab, openSettings
             <span>Images (Cloudflare)</span>
           </button>
 
-          <button
+          <button onClick={() => setTab('multi-reference')} className="px-3 py-2 rounded-lg text-xs text-zinc-300 hover:bg-zinc-800">
+  Multi-Reference
+</button>
+<button onClick={() => setTab('text-to-image-frames')} className="px-3 py-2 rounded-lg text-xs text-zinc-300 hover:bg-zinc-800">
+  Text + Start/End
+</button>
+<button onClick={() => setTab('image-to-image-frames')} className="px-3 py-2 rounded-lg text-xs text-zinc-300 hover:bg-zinc-800">
+  Character Refs
+</button>
+<button
             onClick={() => setTab('monorepo')}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               currentTab === 'monorepo'
@@ -92,3 +103,5 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setTab, openSettings
     </header>
   );
 };
+
+

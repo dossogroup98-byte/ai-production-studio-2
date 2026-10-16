@@ -1,14 +1,18 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { StudioTab, GenerationItem } from './types';
 import { Header } from './components/Header';
 import { VideoStudio } from './components/VideoStudio';
 import { AvatarStudio } from './components/AvatarStudio';
 import { ImageStudio } from './components/ImageStudio';
+import { MultiReference } from './components/MultiReference';
+import { TextToImageFrames } from './components/TextToImage';
+import { ImageToImageFrames } from './components/ImageToImage';
 import { DiagnosticsView } from './components/DiagnosticsView';
 import { MonorepoCodeViewer } from './components/MonorepoCodeViewer';
 import { GalleryView } from './components/GalleryView';
 import { SettingsModal } from './components/SettingsModal';
 import { CheckCircle2, ShieldCheck, Activity, Terminal } from 'lucide-react';
+import { HuggingFaceI2VStudio } from './experiments/HuggingFaceI2V/HuggingFaceI2VStudio';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<StudioTab>('image');
@@ -111,8 +115,12 @@ export default function App() {
         {currentTab === 'image' && (
           <ImageStudio onItemCreated={handleItemCreated} />
         )}
+        {currentTab === 'multi-reference' && <MultiReference />}
+        {currentTab === 'text-to-image-frames' && <TextToImageFrames />}
+        {currentTab === 'image-to-image-frames' && <ImageToImageFrames />}
         {currentTab === 'diagnostics' && <DiagnosticsView />}
         {currentTab === 'monorepo' && <MonorepoCodeViewer />}
+        {currentTab === 'huggingface-i2v' && <HuggingFaceI2VStudio />}
         {currentTab === 'gallery' && (
           <GalleryView items={items} onDeleteItem={handleDeleteItem} />
         )}
@@ -159,3 +167,6 @@ export default function App() {
     </div>
   );
 }
+
+
+
