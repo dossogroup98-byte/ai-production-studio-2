@@ -1078,15 +1078,16 @@ async function startServer() {
             ];
 
             const endPrompt = [
-                'Edit image 0, which is the START FRAME, into the END FRAME.',
-                'Keep the same people, exact facial identities, ages, hairstyles, clothes, and body proportions.',
-                'Preserve the original location, background, lighting, camera style, and object colors.',
-                'Show a later moment in the same scene.',
-                'Change only the requested pose, action, or body movement:',
-                basePrompt,
-                'Keep all characters recognizable and visually consistent.',
-                'Do not create a new scene or replace the people.',
-                'Produce one complete photorealistic image.',
+                const endPrompt = [
+                'Edit image 0, the START FRAME, to create the END FRAME.',
+                'Keep exactly the same three people: one adult man, one adult woman, and their 10-year-old child.',
+                'Preserve each person’s exact facial identity, age, hairstyle, facial hair, clothing, and body proportions.',
+                'Keep their bodies and feet in the same positions.',
+                'The ONLY change is that all three people gently turn their heads slightly to the right and look in that direction.',
+                'Their shoulders and torsos remain facing the camera.',
+                'Keep the same expressions, background, lighting, camera angle, framing, and colors.',
+                'No new objects, no flowers, no extra arms, no extra fingers, no duplicated people.',
+                'Photorealistic image. Do not redesign or replace any person.',
             ].join(' ');
 
             const endImageUrl = await generateFrame(
