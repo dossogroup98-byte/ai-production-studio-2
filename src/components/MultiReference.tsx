@@ -74,8 +74,9 @@ export const MultiReference: React.FC = () => {
                     multiple
                     className="hidden"
                     onChange={e => {
-                        setFiles(Array.from(e.target.files ?? []).slice(0, 4)); +
+                        const selectedFiles = Array.from(e.currentTarget.files ?? []).slice(0, 4);
                         e.currentTarget.value = '';
+                        setFiles(selectedFiles);
                         setResult('');
                         setError('');
                     }}
