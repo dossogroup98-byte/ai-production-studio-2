@@ -1081,7 +1081,7 @@ async function startServer() {
                 'Edit image 0, the START FRAME, to create the END FRAME.',
                 'Keep exactly the same three people and preserve their exact individual facial identities.',
                 'IMPORTANT: The man must remain immediately recognizable as the exact same man in the START FRAME.',
-                'MAN: Make only a very small head turn, about 10 degrees toward his own right. His face must remain mostly facing the camera, with both eyes visible. Do not create a side profile. Do not change his facial geometry, nose, lips, jaw, eyes, or face shape.',
+                'MAN: Turn his head only 5 degrees toward his own right. Keep his face almost directly facing the camera, with both eyes clearly visible. Preserve his exact original face width, full cheeks, jaw width, nose, lips, eyes, and facial proportions. Do not slim, narrow, stretch, reshape, or age his face. No side profile.',
                 'WOMAN: Turn her head slightly toward her own right, about 15 degrees, while preserving her exact face.',
                 'CHILD: Turn his head slightly toward his own right, about 10 degrees. Keep his youthful face and exact age.',
                 'Only adjust head direction and gaze. Keep shoulders, torsos, body positions, and feet unchanged.',
