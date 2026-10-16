@@ -69,15 +69,13 @@ export const MultiImageComposition: React.FC = () => {
 
             const safePrompt = `${prompt.trim()}
 
-REALISTIC BODY PROPORTIONS:
-All people must have anatomically correct, realistic body proportions.
-The adult man and woman must have natural adult body proportions.
-The 10-year-old child must have realistic child anatomy and be noticeably shorter than both adults.
-Use natural head-to-body ratios for each person's age.
-Correct shoulder width, torso length, arm length, leg length, hands, feet, and neck proportions.
-All people must stand naturally on the same ground plane.
-No oversized heads, tiny bodies, elongated limbs, distorted torsos, uneven body scale, or unnatural proportions.
-Preserve every person's face and identity exactly as specified above.`;
+Create one realistic photograph using all three reference images.
+
+Preserve the exact face and identity of each person from their own reference image. Do not alter facial geometry, eyes, eyebrows, nose, lips, jawline, age, or hairstyle. Never transfer facial features between people.
+
+Show all three people together: one adult man, one adult woman, and one 10-year-old child. Keep each person's identity separate. The child must be visibly shorter than the adults, with realistic child proportions.
+
+One single photograph, natural poses, realistic anatomy. No collage, split screen, duplicated people, or mixed identities.`;
 
             const response = await fetch('/api/studio/multi-reference', {
                 method: 'POST',
