@@ -1079,16 +1079,15 @@ async function startServer() {
 
             const endPrompt = [
                 'Edit image 0, the START FRAME, to create the END FRAME.',
-                'Keep exactly the same three people and preserve their individual facial identities.',
-                'All head movements are from each person’s own perspective, toward their own right side.',
-                'MAN: Clearly turn his head about 25 degrees to his own right. His nose and gaze must visibly point to his right. Do not leave his head facing the camera.',
-                'WOMAN: Turn her head about 20 degrees to her own right. Her nose and gaze must visibly point to her right.',
-                '10-YEAR-OLD CHILD: Turn his head about 20 degrees to his own right. Keep his clearly youthful face and age.',
-                'Only rotate their heads and eyes. Keep shoulders, torsos, and body positions unchanged.',
-                'Preserve each face, hairstyle, facial hair, age, clothing, and body proportions.',
-                'Keep the same background, lighting, camera angle, framing, and colors.',
-                'Exactly three people. Two arms per person. No extra limbs, fingers, people, or objects.',
-                'Photorealistic. Do not redesign the characters or create a new scene.',
+                'Keep exactly the same three people and preserve their exact individual facial identities.',
+                'IMPORTANT: The man must remain immediately recognizable as the exact same man in the START FRAME.',
+                'MAN: Make only a very small head turn, about 10 degrees toward his own right. His face must remain mostly facing the camera, with both eyes visible. Do not create a side profile. Do not change his facial geometry, nose, lips, jaw, eyes, or face shape.',
+                'WOMAN: Turn her head slightly toward her own right, about 15 degrees, while preserving her exact face.',
+                'CHILD: Turn his head slightly toward his own right, about 10 degrees. Keep his youthful face and exact age.',
+                'Only adjust head direction and gaze. Keep shoulders, torsos, body positions, and feet unchanged.',
+                'Preserve the original hairstyles, beard, moustache, clothing, body proportions, background, lighting, camera angle, framing, and colors.',
+                'Exactly the same three people. No face replacement, no new faces, no side-profile faces, no extra limbs or objects.',
+                'Photorealistic image. Make a subtle change from the START FRAME, not a new composition.',
             ].join(' ');
 
             const endImageUrl = await generateFrame(
