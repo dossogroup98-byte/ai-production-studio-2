@@ -74,7 +74,8 @@ export const MultiReference: React.FC = () => {
                     multiple
                     className="hidden"
                     onChange={e => {
-                        setFiles(Array.from(e.target.files ?? []).slice(0, 4));
+                        setFiles(Array.from(e.target.files ?? []).slice(0, 4)); +
+                        e.currentTarget.value = '';
                         setResult('');
                         setError('');
                     }}
@@ -82,14 +83,59 @@ export const MultiReference: React.FC = () => {
             </label>
 
             {previews.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {previews.map((url, i) => (
-                        <div key={url}>
-                            <img src={url} alt={files[i].name}
-                                className="h-36 w-full rounded-lg border border-zinc-700 object-contain bg-black" />
-                            <p className="truncate text-xs text-zinc-300">{files[i].name}</p>
-                        </div>
-                    ))}
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <p className="text-sm text-zinc-300">
+                            Seçilen görseller: {files.length}/4
+                        </p>
+
+                        <button
+                            type="button"
+                            disabled={loading}
+                            onClick={() => {
+                                setFiles([]);
+                                setResult('');
+                                setError('');
+                            }}
+                            className="rounded-lg bg-red-700 px-3 py-2 text-sm hover:bg-red-600 disabled:opacity-50"
+                        >
+                            Tümünü Temizle
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {previews.map((url, i) => (
+                            <div
+                                key={url}
+                                className="rounded-lg border border-zinc-700 p-2"
+                            >
+                                <img
+                                    src={url}
+                                    alt={files[i]?.name ?? `Referans ${i + 1}`}
+                                    className="h-36 w-full rounded-lg border border-zinc-700 object-contain bg-black"
+                                />
+
+                                <p className="mt-2 truncate text-xs text-zinc-300">
+                                    {files[i]?.name}
+                                </p>
+
+                                <button
+                                    type="button"
+                                    disabled={loading}
+                                    onClick={() => {
+                                        setFiles(current =>
+                                            current.filter((_, index) => index !== i)
+                                        );
+                                        setResult('');
+                                        setError('');
+                                    }}
+                                    className="mt-2 w-full rounded-lg bg-red-700 px-2 py-2 text-sm hover:bg-red-600 disabled:opacity-50"
+                                >
+                                    Kaldır
+                                </button>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 
