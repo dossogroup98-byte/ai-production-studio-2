@@ -941,6 +941,7 @@ async function startServer() {
 
 
 
+
     app.post('/api/studio/multi-reference-start-end', async (req: Request, res: Response) => {
         try {
             const { prompt, referenceImages = [] } = req.body;
@@ -949,15 +950,19 @@ async function startServer() {
             const cfToken = (process.env.CLOUDFLARE_API_TOKEN || '').trim();
 
             if (typeof prompt !== 'string' || !prompt.trim()) {
-                return res.status(400).json({ success: false, error: 'Prompt gerekli.' });
+                return res.status(400).json({
+                    success: false,
+                    error: 'Prompt gerekli.',
+                });
             }
 
             if (
                 !Array.isArray(referenceImages) ||
                 referenceImages.length > 4 ||
-                referenceImages.some((image: unknown) =>
-                    typeof image !== 'string' ||
-                    !/^data:image\/[a-zA-Z0-9.+-]+;base64,.+$/.test(image)
+                referenceImages.some(
+                    (image: unknown) =>
+                        typeof image !== 'string' ||
+                        !/^data:image\/[a-zA-Z0-9.+-]+;base64,.+$/.test(image)
                 )
             ) {
                 return res.status(400).json({
@@ -967,44 +972,70 @@ async function startServer() {
             }
 
             if (!cfAccount || !cfToken) {
-                return res.status(401).json({ success: false, error: 'Cloudflare ayarları eksik.' });
+                return res.status(401).json({
+                    success: false,
+                    error: 'Cloudflare ayarları eksik.',
+                });
             }
 
-            const generateFrame = async (framePrompt: string): Promise<string> => {
+            const modelUrl =
+                `https://api.cloudflare.com/client/v4/accounts/${cfAccount}` +
+                '/ai/run/@cf/black-forest-labs/flux-2-klein-4b';
+
+            const generateFrame = async (
+                framePrompt: string,
+                images: string[]
+            ): Promise<string> => {
                 const form = new FormData();
                 form.append('prompt', framePrompt);
 
-                for (let i = 0; i < referenceImages.length; i++) {
-                    const match = referenceImages[i].match(
+                for (let i = 0; i < images.length; i++) {
+                    const match = images[i].match(
                         /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/
                     );
-                    if (!match) throw new Error(`Referans ${i + 1} okunamadı.`);
 
+                    if (!match) {
+                        throw new Error(`Görsel ${i + 1} okunamadı.`);
+                    }
+
+                    const mimeType = match[1];
                     const bytes = Buffer.from(match[2], 'base64');
-                    const extension = match[1].split('/')[1].replace('jpeg', 'jpg');
+
+                    if (!bytes.length) {
+                        throw new Error(`Görsel ${i + 1} boş.`);
+                    }
+
+                    const extension = mimeType.split('/')[1].replace('jpeg', 'jpg');
 
                     form.append(
                         `input_image_${i}`,
-                        new Blob([new Uint8Array(bytes)], { type: match[1] }),
+                        new Blob([new Uint8Array(bytes)], { type: mimeType }),
                         `reference-${i + 1}.${extension}`
                     );
                 }
 
-                const response = await fetch(
-                    `https://api.cloudflare.com/client/v4/accounts/${cfAccount}/ai/run/@cf/black-forest-labs/flux-2-klein-4b`,
-                    {
-                        method: 'POST',
-                        headers: { Authorization: `Bearer ${cfToken}` },
-                        body: form,
-                    }
-                );
+                const response = await fetch(modelUrl, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${cfToken}`,
+                    },
+                    body: form,
+                });
 
                 if (!response.ok) {
                     const message = await response.text();
-                    throw new Error(`Cloudflare HTTP ${response.status}: ${message.slice(0, 300)}`);
+                    console.error(
+                        '[Multi-reference Start-End]',
+                        response.status,
+                        message.slice(0, 800)
+                    );
+                    throw new Error(
+                        `Cloudflare HTTP ${response.status}: ${message.slice(0, 300)}`
+                    );
                 }
 
                 const contentType = response.headers.get('content-type') || '';
+
                 if (contentType.toLowerCase().includes('image/')) {
                     const bytes = Buffer.from(await response.arrayBuffer());
                     return `data:${contentType};base64,${bytes.toString('base64')}`;
@@ -1012,24 +1043,55 @@ async function startServer() {
 
                 const json = await response.json() as any;
                 const image = json?.result?.image ?? json?.image;
+
                 if (typeof image !== 'string' || !image.length) {
                     throw new Error('Cloudflare görsel döndürmedi.');
                 }
 
-                return image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`;
+                return image.startsWith('data:')
+                    ? image
+                    : `data:image/jpeg;base64,${image}`;
             };
 
             const basePrompt = prompt.trim();
-            const identityRules = referenceImages.length
-                ? '\nUse the supplied reference images to preserve each character’s facial identity, age, hairstyle and appearance. Keep each person distinct. Maintain realistic body proportions and age-appropriate height differences.'
-                : '';
 
+            const identityRules = [
+                'Create a photorealistic cinematic image.',
+                'Use the supplied character reference images to preserve facial identity, age, hairstyle, and appearance.',
+                'Keep every person distinct. Do not merge identities.',
+                'Maintain realistic body proportions and height differences.',
+            ].join(' ');
+
+            // 1. START: Karakter referanslarından ilk kareyi üret.
             const startImageUrl = await generateFrame(
-                `${basePrompt}${identityRules}\nCreate the START FRAME: the opening moment of the scene. Generate one complete, realistic still image.`
+                `${basePrompt}\n${identityRules}\n` +
+                'Create the START FRAME: the opening moment of the scene.',
+                referenceImages
             );
 
+            // 2. END: Start görselini birinci sırada kullan.
+            // Model en fazla 4 görsel kabul eder:
+            // Start görseli + en fazla 3 karakter referansı.
+            const endReferenceImages = [
+                startImageUrl,
+                ...referenceImages.slice(0, 3),
+            ];
+
+            const endPrompt = [
+                'Edit image 0, which is the START FRAME, into the END FRAME.',
+                'Keep the same people, exact facial identities, ages, hairstyles, clothes, and body proportions.',
+                'Preserve the original location, background, lighting, camera style, and object colors.',
+                'Show a later moment in the same scene.',
+                'Change only the requested pose, action, or body movement:',
+                basePrompt,
+                'Keep all characters recognizable and visually consistent.',
+                'Do not create a new scene or replace the people.',
+                'Produce one complete photorealistic image.',
+            ].join(' ');
+
             const endImageUrl = await generateFrame(
-                `${basePrompt}${identityRules}\nCreate the END FRAME: a later moment in the same scene. Keep characters and visual style consistent, but change the pose, action or camera framing. Generate one complete, realistic still image.`
+                endPrompt,
+                endReferenceImages
             );
 
             return res.json({
@@ -1041,12 +1103,17 @@ async function startServer() {
             });
         } catch (err) {
             console.error('[Multi-reference Start-End] Error:', err);
+
             return res.status(500).json({
                 success: false,
-                error: err instanceof Error ? err.message : 'Start/End görsel üretimi başarısız.',
+                error:
+                    err instanceof Error
+                        ? err.message
+                        : 'Start/End görsel üretimi başarısız.',
             });
         }
     });
+
 
 
   app.listen(PORT, '0.0.0.0', () => {
