@@ -43,7 +43,7 @@ const endResponse = await fetch('/api/studio/i2i', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-        prompt: `...`,
+        prompt: `${prompt.trim()}. CONTINUITY IS CRITICAL: This is the same photograph and exact same scene as the input image. Preserve every existing object, especially the exact same tulip with exactly the same yellow color. Do not change flower colors, clothing colors, background, lighting, camera direction, or character identity. Change only the woman's pose: she bends down and smells that same yellow tulip. Do not replace, recolor, add, or remove objects.`,
         imageData: data.image_url,
         strength: 0.35,
     }),
