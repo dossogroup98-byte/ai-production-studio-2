@@ -1177,7 +1177,7 @@ async function startServer() {
             'x-goog-api-key': apiKey,
           },
           body: JSON.stringify({
-            model: 'gemini-3.8-flash',
+            model: 'gemini-3.5-flash-lite',
             input: instruction,
             generation_config: {
               thinking_level: 'low',
@@ -1227,7 +1227,7 @@ async function startServer() {
         success: true,
         ...prompts,
         provider: 'gemini',
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.5-flash-lite',
       });
     } catch (err) {
       console.error('[Prompt Studio] Error:', err);
@@ -1247,6 +1247,7 @@ startServer().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
+
 
 
 
