@@ -8,55 +8,65 @@ export const TextToImageFrames: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const generate = async () => {
-        if (!prompt.trim()) {
-            setError('Lütfen sahneyi tarif eden bir Prompt yaz.');
-            return;
-        }
 
-        setLoading(true);
-        setError('');
-        setStartImage('');
-        setEndImage('');
+const generate = async () => {
+    if (!prompt.trim()) {
+        setError('Lütfen sahneyi tarif eden bir Prompt yaz.');
+        return;
+    }
 
-        try {
-            const response = await fetch('/api/studio/t2i', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    prompt: `${prompt.trim()}. Create a realistic cinematic START FRAME, the opening moment of the scene.`,
-                }),
-            });
+    setLoading(true);
+    setError('');
+    setStartImage('');
+    setEndImage('');
 
-            const data = await response.json();
+    try {
+        // START: Mevcut T2I motoru
+        const response = await fetch('/api/studio/t2i', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt: `${ prompt.trim() }. Create one realistic cinematic START FRAME.Establish the character's appearance, face, hairstyle, clothing, body proportions, lighting and scene.`,
+}),
+        });
 
-            if (!response.ok || !data.image_url) {
-                throw new Error(data.error || 'Başlangıç görseli üretilemedi.');
-            }
+const data = await response.json();
 
-            setStartImage(data.image_url);
+if (!response.ok || !data.image_url) {
+    throw new Error(data.error || 'Başlangıç görseli üretilemedi.');
+}
 
-            const endResponse = await fetch('/api/studio/t2i', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    prompt: `${prompt.trim()}. Create a realistic cinematic END FRAME from the same scene, with a later moment, a changed pose or action, and consistent characters and visual style.`,
-                }),
-            });
+setStartImage(data.image_url);
 
-            const endData = await endResponse.json();
+// END: Start görselini referans alan mevcut I2I motoru
+const endResponse = await fetch('/api/studio/i2i', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+        prompt: `...`,
+        imageData: data.image_url,
+        strength: 0.35,
+    }),
+});
 
-            if (!endResponse.ok || !endData.image_url) {
-                throw new Error(endData.error || 'Bitiş görseli üretilemedi.');
-            }
+const endData = await endResponse.json();
 
-            setEndImage(endData.image_url);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Görsel üretimi başarısız.');
-        } finally {
-            setLoading(false);
-        }
-    };
+if (!endResponse.ok || !endData.image_url) {
+    throw new Error(endData.error || 'Bitiş görseli üretilemedi.');
+}
+
+setEndImage(endData.image_url);
+    } catch (err) {
+    setError(
+        err instanceof Error
+            ? err.message
+            : 'Görsel üretimi başarısız.'
+    );
+} finally {
+    setLoading(false);
+}
+};
+
 
     return (
         <section className="max-w-5xl mx-auto p-6 space-y-6 text-white">
