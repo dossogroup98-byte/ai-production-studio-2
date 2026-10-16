@@ -1078,7 +1078,6 @@ async function startServer() {
             ];
 
             const endPrompt = [
-                const endPrompt = [
                 'Edit image 0, the START FRAME, to create the END FRAME.',
                 'Keep exactly the same three people: one adult man, one adult woman, and their 10-year-old child.',
                 'Preserve each person’s exact facial identity, age, hairstyle, facial hair, clothing, and body proportions.',
