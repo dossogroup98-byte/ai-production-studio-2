@@ -1079,14 +1079,16 @@ async function startServer() {
 
             const endPrompt = [
                 'Edit image 0, the START FRAME, to create the END FRAME.',
-                'Keep exactly the same three people: one adult man, one adult woman, and their 10-year-old child.',
-                'Preserve each person’s exact facial identity, age, hairstyle, facial hair, clothing, and body proportions.',
-                'Keep their bodies and feet in the same positions.',
-                'The ONLY change is that all three people gently turn their heads slightly to the right and look in that direction.',
-                'Their shoulders and torsos remain facing the camera.',
-                'Keep the same expressions, background, lighting, camera angle, framing, and colors.',
-                'No new objects, no flowers, no extra arms, no extra fingers, no duplicated people.',
-                'Photorealistic image. Do not redesign or replace any person.',
+                'Keep exactly the same three people and preserve their individual facial identities.',
+                'All head movements are from each person’s own perspective, toward their own right side.',
+                'MAN: Clearly turn his head about 25 degrees to his own right. His nose and gaze must visibly point to his right. Do not leave his head facing the camera.',
+                'WOMAN: Turn her head about 20 degrees to her own right. Her nose and gaze must visibly point to her right.',
+                '10-YEAR-OLD CHILD: Turn his head about 20 degrees to his own right. Keep his clearly youthful face and age.',
+                'Only rotate their heads and eyes. Keep shoulders, torsos, and body positions unchanged.',
+                'Preserve each face, hairstyle, facial hair, age, clothing, and body proportions.',
+                'Keep the same background, lighting, camera angle, framing, and colors.',
+                'Exactly three people. Two arms per person. No extra limbs, fingers, people, or objects.',
+                'Photorealistic. Do not redesign the characters or create a new scene.',
             ].join(' ');
 
             const endImageUrl = await generateFrame(
