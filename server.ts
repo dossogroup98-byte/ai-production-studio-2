@@ -1169,7 +1169,7 @@ async function startServer() {
       ].join('\n');
 
       const response = await fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/interactions',
         {
           method: 'POST',
           headers: {
@@ -1177,10 +1177,11 @@ async function startServer() {
             'x-goog-api-key': apiKey,
           },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: instruction }] }],
-            generationConfig: {
-              responseMimeType: 'application/json',
-              temperature: 0.7,
+            model: 'gemini-3.8-flash',
+            input: instruction,
+            generation_config: {
+              thinking_level: 'low',
+              max_output_tokens: 4096,
             },
           }),
         }
@@ -1196,9 +1197,14 @@ async function startServer() {
         });
       }
 
-      const output = data?.candidates?.[0]?.content?.parts
-        ?.map((part: any) => part.text || '')
-        .join('');
+      const output = typeof data?.output_text === 'string'
+        ? data.output_text
+        : (data?.steps ?? [])
+            .filter((step: any) => step.type === 'model_output')
+            .flatMap((step: any) => step.content ?? [])
+            .filter((part: any) => part.type === 'text')
+            .map((part: any) => part.text ?? '')
+            .join('');
 
       if (!output) {
         return res.status(502).json({
@@ -1206,7 +1212,6 @@ async function startServer() {
           error: 'Gemini boş yanıt döndürdü.',
         });
       }
-
       let prompts: any;
       try {
         prompts = JSON.parse(output);
@@ -1242,5 +1247,6 @@ startServer().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
+
 
 
