@@ -1117,6 +1117,122 @@ async function startServer() {
 
 
 
+
+  // Independent Prompt Studio endpoint (Gemini)
+  app.post('/api/studio/prompt', async (req: Request, res: Response) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({
+          success: false,
+          error: 'GEMINI_API_KEY Render Environment Variables bölümünde tanımlı değil.',
+        });
+      }
+
+      const {
+        description,
+        action = 'enhance',
+        promptType = 'video',
+        startEnd = false,
+        turkishPrompt = '',
+        englishPrompt = '',
+      } = req.body ?? {};
+
+      if (typeof description !== 'string' || !description.trim()) {
+        return res.status(400).json({
+          success: false,
+          error: 'Lütfen ne oluşturmak istediğini yaz.',
+        });
+      }
+
+      const instruction = [
+        'You are a professional AI image and video prompt engineer.',
+        'Return ONLY valid JSON. No markdown fences or explanations.',
+        'JSON schema: {"turkishPrompt":"...","englishPrompt":"...","startPromptTR":"...","startPromptEN":"...","endPromptTR":"...","endPromptEN":"..."}',
+        'Write natural, specific, production-ready prompts.',
+        'Preserve any requested identity, face geometry, age, hairstyle, beard, clothing, and scene continuity. Do not invent identity changes.',
+        `Action: ${String(action)}`,
+        `Prompt type: ${String(promptType)}`,
+        `Create separate start and end frame prompts: ${Boolean(startEnd)}`,
+        `User request: ${description.trim()}`,
+        `Existing Turkish prompt: ${String(turkishPrompt)}`,
+        `Existing English prompt: ${String(englishPrompt)}`,
+        'Write the Turkish and English prompts with equivalent meaning.',
+        startEnd
+          ? 'Also provide separate START and END frame prompts in both languages. Keep the same character identity and scene continuity while making the end frame a plausible progression from the start frame.'
+          : 'If start/end prompts are not requested, return empty strings for all start/end fields.',
+        action === 'create'
+          ? 'Create a complete prompt from scratch based on the user request.'
+          : action === 'video'
+            ? 'Focus on temporal progression, subject motion, camera movement, and a coherent video shot.'
+            : 'Improve the existing prompt/request while preserving its intent and constraints.',
+      ].join('\n');
+
+      const response = await fetch(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: instruction }] }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.7,
+            },
+          }),
+        }
+      );
+
+      const data = await response.json() as any;
+
+      if (!response.ok) {
+        console.error('[Prompt Studio Gemini]', response.status, data?.error?.message);
+        return res.status(response.status).json({
+          success: false,
+          error: data?.error?.message || 'Gemini prompt oluşturamadı.',
+        });
+      }
+
+      const output = data?.candidates?.[0]?.content?.parts
+        ?.map((part: any) => part.text || '')
+        .join('');
+
+      if (!output) {
+        return res.status(502).json({
+          success: false,
+          error: 'Gemini boş yanıt döndürdü.',
+        });
+      }
+
+      let prompts: any;
+      try {
+        prompts = JSON.parse(output);
+      } catch {
+        console.error('[Prompt Studio] Gemini JSON parse failed');
+        return res.status(502).json({
+          success: false,
+          error: 'Gemini yanıtı çözümlenemedi. Lütfen tekrar dene.',
+        });
+      }
+
+      return res.json({
+        success: true,
+        ...prompts,
+        provider: 'gemini',
+        model: 'gemini-2.5-flash',
+      });
+    } catch (err) {
+      console.error('[Prompt Studio] Error:', err);
+      return res.status(500).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'Prompt oluşturulamadı.',
+      });
+    }
+  });
+
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`AI Production Studio server running on port ${PORT}`);
   });
@@ -1126,4 +1242,5 @@ startServer().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
+
 

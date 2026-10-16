@@ -9,6 +9,7 @@ import { MultiReferenceStartEnd } from './components/MultiReferenceStartEnd';
 import { MultiImageComposition } from './components/MultiImageComposition';
 import { TextToImageFrames } from './components/TextToImage';
 import { ImageToImageFrames } from './components/ImageToImage';
+import { PromptStudio } from './components/PromptStudio';
 import { DiagnosticsView } from './components/DiagnosticsView';
 import { MonorepoCodeViewer } from './components/MonorepoCodeViewer';
 import { GalleryView } from './components/GalleryView';
@@ -121,6 +122,7 @@ export default function App() {
         {currentTab === 'multi-image-composition' && <MultiImageComposition />}
         {currentTab === 'text-to-image-frames' && <TextToImageFrames />}
         {currentTab === 'image-to-image-frames' && <ImageToImageFrames />}
+            {currentTab === 'prompt-studio' && <PromptStudio />}
         {currentTab === 'diagnostics' && <DiagnosticsView />}
         {currentTab === 'monorepo' && <MonorepoCodeViewer />}
         {currentTab === 'gallery' && (
@@ -169,6 +171,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 

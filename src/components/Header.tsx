@@ -31,6 +31,17 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setTab, openSettings
 
         {/* Navigation Tabs */}
         <nav className="flex items-center gap-1 bg-zinc-900/80 p-1 rounded-xl border border-zinc-800">
+          <button
+            onClick={() => setTab('prompt-studio')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              currentTab === 'prompt-studio'
+                ? 'bg-violet-600 text-white shadow-sm'
+                : 'text-zinc-400 hover:text-violet-300 hover:bg-zinc-800/60'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Prompt Studio</span>
+          </button>
                   <button
                       onClick={() => setTab('huggingface-i2v')}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${currentTab === 'huggingface-i2v'
@@ -106,6 +117,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setTab, openSettings
     </header>
   );
 };
+
 
 
 
