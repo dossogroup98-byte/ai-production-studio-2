@@ -4,7 +4,6 @@ import path from 'path';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import fs from 'fs';
-import { registerHuggingFaceI2V } from './src/experiments/HuggingFaceI2V/huggingfaceI2v';
 
 dotenv.config();
 
@@ -33,7 +32,6 @@ async function startServer() {
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-  registerHuggingFaceI2V(app);
 
   // Health endpoint
   app.get(['/health', '/api/health', '/api/studio/health'], (_req: Request, res: Response) => {
