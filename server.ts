@@ -4,6 +4,7 @@ import path from 'path';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import { registerHuggingFaceI2V } from './src/experiments/HuggingFaceI2V/huggingfaceI2v';
 
 dotenv.config();
 
@@ -32,6 +33,7 @@ async function startServer() {
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+  registerHuggingFaceI2V(app);
 
   // Health endpoint
   app.get(['/health', '/api/health', '/api/studio/health'], (_req: Request, res: Response) => {
@@ -833,6 +835,111 @@ async function startServer() {
       res.sendFile(path.resolve(process.cwd(), 'dist', 'index.html'));
     });
   }
+
+  
+  app.post('/api/studio/multi-reference', async (req: Request, res: Response) => {
+    try {
+      const { prompt, images } = req.body;
+      const cfAccount = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+      const cfToken = (process.env.CLOUDFLARE_API_TOKEN || '').trim();
+
+      if (typeof prompt !== 'string' || !prompt.trim()) {
+        return res.status(400).json({ success: false, error: 'Prompt gerekli.' });
+      }
+
+      if (!Array.isArray(images) || images.length < 2 || images.length > 4) {
+        return res.status(400).json({
+          success: false,
+          error: 'Lütfen 2 ile 4 arasında referans görsel seçin.',
+        });
+      }
+
+      if (!cfAccount || !cfToken) {
+        return res.status(401).json({
+          success: false,
+          error: 'Cloudflare ayarları eksik.',
+        });
+      }
+
+      const form = new FormData();
+      form.append('prompt', prompt.trim());
+
+      for (let i = 0; i < images.length; i++) {
+        const value = images[i];
+        if (typeof value !== 'string') {
+          return res.status(400).json({ success: false, error: `Görsel ${i + 1} geçersiz.` });
+        }
+
+        const match = value.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+        if (!match) {
+          return res.status(400).json({
+            success: false,
+            error: `Görsel ${i + 1} base64 formatında değil.`,
+          });
+        }
+
+        const bytes = Buffer.from(match[2], 'base64');
+        if (!bytes.length) {
+          return res.status(400).json({ success: false, error: `Görsel ${i + 1} boş.` });
+        }
+
+        form.append(
+          `input_image_${i}`,
+          new Blob([new Uint8Array(bytes)], { type: match[1] }),
+          `reference-${i + 1}.png`
+        );
+      }
+
+      const cfResp = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${cfAccount}/ai/run/@cf/black-forest-labs/flux-2-klein-4b`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${cfToken}` },
+          body: form,
+        }
+      );
+
+      if (!cfResp.ok) {
+        const errorText = await cfResp.text();
+        console.error('[Multi-reference]', cfResp.status, errorText.slice(0, 800));
+        return res.status(cfResp.status).json({
+          success: false,
+          error: `Cloudflare HTTP ${cfResp.status}: ${errorText.slice(0, 400)}`,
+        });
+      }
+
+      const contentType = cfResp.headers.get('content-type') || '';
+      if (contentType.toLowerCase().includes('image/')) {
+        const bytes = Buffer.from(await cfResp.arrayBuffer());
+        return res.json({
+          success: true,
+          image_url: `data:${contentType};base64,${bytes.toString('base64')}`,
+          provider: 'cloudflare',
+          model: '@cf/black-forest-labs/flux-2-klein-4b',
+        });
+      }
+
+      const json = await cfResp.json() as any;
+      const image = json?.result?.image ?? json?.image;
+      if (typeof image === 'string' && image.length > 0) {
+        return res.json({
+          success: true,
+          image_url: image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`,
+          provider: 'cloudflare',
+          model: '@cf/black-forest-labs/flux-2-klein-4b',
+        });
+      }
+
+      return res.status(502).json({ success: false, error: 'Üretilen görsel yanıtında bulunamadı.' });
+    } catch (err) {
+      console.error('[Multi-reference] Error:', err);
+      return res.status(500).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'Çoklu referans üretimi başarısız.',
+      });
+    }
+  });
+
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`AI Production Studio server running on port ${PORT}`);
