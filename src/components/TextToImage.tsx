@@ -1,42 +1,123 @@
-﻿import React from 'react';
+﻿
+import React, { useState } from 'react';
 
-function ImagePicker({ label }: { label: string }) {
-  const [file, setFile] = React.useState<File | null>(null);
-  const [url, setUrl] = React.useState('');
+export const TextToImageFrames: React.FC = () => {
+    const [prompt, setPrompt] = useState('');
+    const [startImage, setStartImage] = useState('');
+    const [endImage, setEndImage] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
-  React.useEffect(() => {
-    if (!file) { setUrl(''); return; }
-    const next = URL.createObjectURL(file);
-    setUrl(next);
-    return () => URL.revokeObjectURL(next);
-  }, [file]);
+    const generate = async () => {
+        if (!prompt.trim()) {
+            setError('Lütfen sahneyi tarif eden bir Prompt yaz.');
+            return;
+        }
 
-  return (
-    <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-4 space-y-3">
-      <label className="block text-sm font-medium text-white">{label}</label>
-      <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-violet-500/60 bg-zinc-950 p-4 text-center hover:bg-zinc-800">
-        <span className="text-violet-300 font-semibold">＋ Görsel Seçin (Bilgisayarınızdan)</span>
-        <span className="mt-1 text-xs text-zinc-400">PNG, JPG, WEBP</span>
-        <input type="file" accept="image/*" className="sr-only" onChange={e => setFile(e.target.files?.[0] ?? null)} />
-      </label>
-      {url && file && <div className="space-y-1">
-        <img src={url} alt={file.name} className="h-48 w-full rounded-lg border border-zinc-700 object-contain bg-black" />
-        <p className="truncate text-xs text-zinc-300">{file.name}</p>
-      </div>}
-    </div>
-  );
-}
+        setLoading(true);
+        setError('');
+        setStartImage('');
+        setEndImage('');
 
-export const TextToImageFrames: React.FC = () => (
-  <section className="max-w-5xl mx-auto p-6 space-y-6 text-white">
-    <h1 className="text-2xl font-bold">Text to Image — Start / End</h1>
-    <label className="block text-sm">Prompt
-      <textarea rows={4} placeholder="Görselde olmasını istediğiniz sahneyi tarif edin..." className="block mt-2 w-full rounded-xl bg-zinc-900 border border-zinc-700 p-3 text-white" />
-    </label>
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-      <ImagePicker label="Start Frame — Başlangıç Görseli" />
-      <ImagePicker label="End Frame — Bitiş Görseli" />
-    </div>
-    <p className="text-xs text-amber-300">Görsel üretim bağlantısı henüz eklenmedi.</p>
-  </section>
-);
+        try {
+            const response = await fetch('/api/studio/t2i', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: `${prompt.trim()}. Create a realistic cinematic START FRAME, the opening moment of the scene.`,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.image_url) {
+                throw new Error(data.error || 'Başlangıç görseli üretilemedi.');
+            }
+
+            setStartImage(data.image_url);
+
+            const endResponse = await fetch('/api/studio/t2i', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: `${prompt.trim()}. Create a realistic cinematic END FRAME from the same scene, with a later moment, a changed pose or action, and consistent characters and visual style.`,
+                }),
+            });
+
+            const endData = await endResponse.json();
+
+            if (!endResponse.ok || !endData.image_url) {
+                throw new Error(endData.error || 'Bitiş görseli üretilemedi.');
+            }
+
+            setEndImage(endData.image_url);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Görsel üretimi başarısız.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <section className="max-w-5xl mx-auto p-6 space-y-6 text-white">
+            <h1 className="text-2xl font-bold">Text to Image — Start / End</h1>
+
+            <p className="text-sm text-zinc-400">
+                Bir sahne tarif et. Yapay zekâ başlangıç ve bitiş için iki ayrı görsel oluştursun.
+            </p>
+
+            <label className="block text-sm">
+                Prompt
+                <textarea
+                    rows={5}
+                    value={prompt}
+                    onChange={e => setPrompt(e.target.value)}
+                    placeholder="Örnek: Gün batımında sahilde yürüyen bir adam, sinematik ve gerçekçi..."
+                    className="block mt-2 w-full rounded-xl bg-zinc-900 border border-zinc-700 p-3 text-white"
+                />
+            </label>
+
+            <button
+                type="button"
+                onClick={generate}
+                disabled={loading}
+                className="w-full rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 p-3 font-semibold"
+            >
+                {loading ? 'Görseller oluşturuluyor...' : 'Start + End Görsellerini Oluştur'}
+            </button>
+
+            {error && <p className="text-sm text-red-400">{error}</p>}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {[
+                    { title: 'Start Frame — Başlangıç', image: startImage, name: 'start-frame.png' },
+                    { title: 'End Frame — Bitiş', image: endImage, name: 'end-frame.png' },
+                ].map(frame => (
+                    <div key={frame.title} className="space-y-3">
+                        <h2 className="font-semibold">{frame.title}</h2>
+                        {frame.image ? (
+                            <>
+                                <img
+                                    src={frame.image}
+                                    alt={frame.title}
+                                    className="w-full rounded-xl border border-zinc-700"
+                                />
+                                <a
+                                    href={frame.image}
+                                    download={frame.name}
+                                    className="inline-block rounded-lg bg-zinc-700 px-4 py-2"
+                                >
+                                    Görseli Kaydet
+                                </a>
+                            </>
+                        ) : (
+                            <div className="flex min-h-48 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-500">
+                                {loading ? 'Oluşturuluyor...' : 'Henüz görsel yok'}
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </section>
+    );
+};
