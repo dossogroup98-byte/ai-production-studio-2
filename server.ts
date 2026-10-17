@@ -944,7 +944,11 @@ async function startServer() {
 
     app.post('/api/studio/multi-reference-start-end', async (req: Request, res: Response) => {
         try {
-            const { prompt, referenceImages = [] } = req.body;
+            const {
+                prompt,
+                referenceImages = [],
+                referenceDetails = [],
+            } = req.body;
 
             const cfAccount = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
             const cfToken = (process.env.CLOUDFLARE_API_TOKEN || '').trim();
@@ -971,6 +975,16 @@ async function startServer() {
                 });
             }
 
+            if (
+                !Array.isArray(referenceDetails) ||
+                referenceDetails.length !== referenceImages.length
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Referans açıklamaları fotoğraflarla eşleşmiyor.',
+                });
+            }
+
             if (!cfAccount || !cfToken) {
                 return res.status(401).json({
                     success: false,
@@ -978,9 +992,74 @@ async function startServer() {
                 });
             }
 
+            const allowedRoles = new Set([
+                'Belirtilmedi',
+                'Kadın',
+                'Erkek',
+                'Çocuk',
+                'Diğer',
+            ]);
+
+            const details = referenceDetails.map((item: any, i: number) => {
+                if (!item || typeof item !== 'object') {
+                    throw new Error(`Referans ${i + 1} açıklaması geçersiz.`);
+                }
+
+                const role = allowedRoles.has(item.role)
+                    ? item.role
+                    : 'Belirtilmedi';
+
+                const age =
+                    typeof item.age === 'string'
+                        ? item.age.trim().slice(0, 40)
+                        : '';
+
+                return { role, age };
+            });
+
             const modelUrl =
                 `https://api.cloudflare.com/client/v4/accounts/${cfAccount}` +
                 '/ai/run/@cf/black-forest-labs/flux-2-klein-4b';
+
+            const buildIdentityMap = (
+                items: typeof details,
+                imageIndexOffset: number
+            ): string => {
+                if (items.length === 0) {
+                    return [
+                        'No character reference images were supplied.',
+                        'Follow the user prompt for the people present in the scene.',
+                        'Do not invent additional people or assume a fixed cast.',
+                    ].join('\n');
+                }
+
+                const lines = items.map((item, i) => {
+                    const descriptionParts: string[] = [];
+
+                    if (item.role !== 'Belirtilmedi') {
+                        descriptionParts.push(`person type: ${item.role}`);
+                    }
+
+                    if (item.age) {
+                        descriptionParts.push(`age: ${item.age}`);
+                    }
+
+                    const description = descriptionParts.length
+                        ? descriptionParts.join(', ')
+                        : 'person type and age not specified';
+
+                    return `- input_image_${i + imageIndexOffset} = reference ${i + 1}; ${description}. Preserve this person's individual identity.`;
+                });
+
+                return [
+                    'REFERENCE IDENTITY MAP:',
+                    ...lines,
+                    'Never swap identities between reference images.',
+                    'Use only the people requested by the scene prompt.',
+                    'Do not assume a fixed number, gender, or age of people.',
+                    'If an age is not specified, do not impose a specific age.',
+                ].join('\n');
+            };
 
             const generateFrame = async (
                 framePrompt: string,
@@ -1029,6 +1108,7 @@ async function startServer() {
                         response.status,
                         message.slice(0, 800)
                     );
+
                     throw new Error(
                         `Cloudflare HTTP ${response.status}: ${message.slice(0, 300)}`
                     );
@@ -1055,40 +1135,45 @@ async function startServer() {
 
             const basePrompt = prompt.trim();
 
-            const identityRules = [
+            const sharedRules = [
                 'Create a photorealistic cinematic image.',
-                'Use the supplied character reference images to preserve facial identity, age, hairstyle, and appearance.',
-                'Keep every person distinct. Do not merge identities.',
-                'Maintain realistic body proportions and height differences.',
-            ].join(' ');
+                'Preserve the individual identities of supplied reference people.',
+                'Keep distinct people distinct; do not merge or swap identities.',
+                'Follow the user scene prompt for which people are present and what they do.',
+                'Preserve facial features and apparent age as consistently as possible.',
+            ].join('\n');
 
-            // 1. START: Karakter referanslarından ilk kareyi üret.
+            const startIdentityMap = buildIdentityMap(details, 0);
+
             const startImageUrl = await generateFrame(
-                `${basePrompt}\n${identityRules}\n` +
-                'Create the START FRAME: the opening moment of the scene.',
+                [
+                    sharedRules,
+                    startIdentityMap,
+                    `SCENE PROMPT:\n${basePrompt}`,
+                    'Create the START FRAME: the opening moment of the scene.',
+                ].join('\n\n'),
                 referenceImages
             );
 
-            // 2. END: Start görselini birinci sırada kullan.
-            // Model en fazla 4 görsel kabul eder:
-            // Start görseli + en fazla 3 karakter referansı.
-            const endReferenceImages = [
-                startImageUrl,
-                ...referenceImages.slice(0, 3),
-            ];
+            // End karesinde input_image_0, üretilen Start karesidir.
+            // Bu nedenle en fazla 3 orijinal referans daha gönderilebilir.
+            const endOriginalImages = referenceImages.slice(0, 3);
+            const endOriginalDetails = details.slice(0, 3);
+            const endReferenceImages = [startImageUrl, ...endOriginalImages];
+            const endIdentityMap = buildIdentityMap(endOriginalDetails, 1);
 
             const endPrompt = [
-                'Edit image 0, the START FRAME, to create the END FRAME.',
-                'Keep exactly the same three people and preserve their exact individual facial identities.',
-                'IMPORTANT: The man must remain immediately recognizable as the exact same man in the START FRAME.',
-                'MAN: Turn his head only 5 degrees toward his own right. Keep his face almost directly facing the camera, with both eyes clearly visible. Preserve his exact original face width, full cheeks, jaw width, nose, lips, eyes, and facial proportions. Do not slim, narrow, stretch, reshape, or age his face. No side profile.',
-                'WOMAN: Preserve the exact same adult woman from the START FRAME. She must remain a mature adult woman with her original adult facial features, adult body proportions, and original height. Never make her look like a child or teenager.',
-                'CHILD: Preserve the exact same 10-year-old boy from the START FRAME. Keep his small child-sized body, short stature, narrow shoulders, short neck, and age-appropriate child proportions. Do not enlarge or mature his body. Only turn his head about 10 degrees toward his own right.',
-                'Only adjust head direction and gaze. Keep shoulders, torsos, body positions, and feet unchanged.',
-                'Preserve the original hairstyles, beard, moustache, clothing, body proportions, background, lighting, camera angle, framing, and colors.',
-                'Exactly the same three people. No face replacement, no new faces, no side-profile faces, no extra limbs or objects.',
-                'Photorealistic image. Make a subtle change from the START FRAME, not a new composition.',
-            ].join(' ');
+                'Create the END FRAME as a plausible progression from input_image_0, the START FRAME.',
+                'Keep the scene and individual identities consistent.',
+                'Use additional reference images according to the identity map.',
+                'Preserve facial features, apparent age, hairstyle, facial hair, clothing, body proportions, lighting, background, and camera framing as consistently as possible.',
+                'Only change actions, gaze, or head direction when appropriate to the scene prompt.',
+                'Do not force a specific number, gender, or age of people.',
+                'Do not add unrequested people or change a person into a different age group.',
+                endIdentityMap,
+                `SCENE PROMPT:\n${basePrompt}`,
+                'Keep the End Frame visually consistent with the Start Frame, not a completely new composition.',
+            ].join('\n\n');
 
             const endImageUrl = await generateFrame(
                 endPrompt,
@@ -1101,16 +1186,17 @@ async function startServer() {
                 end_image_url: endImageUrl,
                 provider: 'cloudflare',
                 model: '@cf/black-forest-labs/flux-2-klein-4b',
+                reference_count: referenceImages.length,
+                end_reference_count: endOriginalImages.length,
             });
         } catch (err) {
             console.error('[Multi-reference Start-End] Error:', err);
 
             return res.status(500).json({
                 success: false,
-                error:
-                    err instanceof Error
-                        ? err.message
-                        : 'Start/End görsel üretimi başarısız.',
+                error: err instanceof Error
+                    ? err.message
+                    : 'Start/End görsel üretimi başarısız.',
             });
         }
     });
