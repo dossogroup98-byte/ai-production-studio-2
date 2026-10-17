@@ -1136,11 +1136,14 @@ async function startServer() {
             const basePrompt = prompt.trim();
 
             const sharedRules = [
-                'Create a photorealistic cinematic image.',
-                'Preserve the individual identities of supplied reference people.',
-                'Keep distinct people distinct; do not merge or swap identities.',
-                'Follow the user scene prompt for which people are present and what they do.',
-                'Preserve facial features and apparent age as consistently as possible.',
+                'Create a photorealistic cinematic image using the supplied reference photos.',
+                'IDENTITY LOCK: The original reference photo of each person is the primary authority for that person’s face.',
+                'Preserve each person’s exact facial geometry, eye shape and spacing, eyebrows, nose, lips, jawline, skin tone, and distinctive features.',
+                'Treat every reference person as a separate identity. Never blend, average, exchange, or transfer facial features between people.',
+                'The role and age label describes the reference person; it does not define or replace their facial identity.',
+                'Keep the child’s original age and childlike facial proportions. Never age up or redesign the child.',
+                'The scene prompt controls the setting and action, not the identity or design of the faces.',
+                'Prioritize facial identity preservation over beautification or stylistic interpretation.',
             ].join('\n');
 
             const startIdentityMap = buildIdentityMap(details, 0);
