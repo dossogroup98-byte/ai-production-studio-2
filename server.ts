@@ -1020,7 +1020,7 @@ async function startServer() {
 
             const modelUrl =
                 `https://api.cloudflare.com/client/v4/accounts/${cfAccount}` +
-                '/ai/run/@cf/black-forest-labs/flux-2-klein-4b';
+                '/ai/run/@cf/black-forest-labs/flux-2-klein-9b';
 
             const buildIdentityMap = (
                 items: typeof details,
@@ -1204,7 +1204,7 @@ async function startServer() {
                 start_image_url: startImageUrl,
                 end_image_url: endImageUrl,
                 provider: 'cloudflare',
-                model: '@cf/black-forest-labs/flux-2-klein-4b',
+                model: '@cf/black-forest-labs/flux-2-klein-9b',
                 reference_count: referenceImages.length,
                 end_reference_count: endOriginalImages.length,
             });
