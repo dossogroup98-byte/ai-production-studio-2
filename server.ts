@@ -1163,7 +1163,7 @@ async function startServer() {
             const endIdentityMap = buildIdentityMap(endOriginalDetails, 1);
 
             const endPrompt = [
-                'Create the END FRAME as a plausible progression from input_image_0, the START FRAME.',
+                'Create a visibly different END FRAME that shows the next moment after the START FRAME. Preserve both identities, but change the characters poses, gestures, and camera composition naturally.',
                 'Keep the scene and individual identities consistent.',
                 'Use additional reference images according to the identity map.',
                 'Preserve facial features, apparent age, hairstyle, facial hair, clothing, body proportions, lighting, background, and camera framing as consistently as possible.',
@@ -1172,7 +1172,7 @@ async function startServer() {
                 'Do not add unrequested people or change a person into a different age group.',
                 endIdentityMap,
                 `SCENE PROMPT:\n${basePrompt}`,
-                'Keep the End Frame visually consistent with the Start Frame, not a completely new composition.',
+                'The END FRAME must not duplicate the START FRAME. Show a clear, natural progression: change body poses, hand positions, gaze direction, and camera framing while keeping both faces recognizable and identities unchanged.',
             ].join('\n\n');
 
             const endImageUrl = await generateFrame(
