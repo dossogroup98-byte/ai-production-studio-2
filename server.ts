@@ -4,6 +4,7 @@ import path from 'path';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import sharp from 'sharp';
 
 dotenv.config();
 
@@ -1077,8 +1078,23 @@ async function startServer() {
                         throw new Error(`Görsel ${i + 1} okunamadı.`);
                     }
 
-                    const mimeType = match[1];
-                    const bytes = Buffer.from(match[2], 'base64');
+                    const inputBuffer = Buffer.from(match[2], 'base64');
+
+                    if (!inputBuffer.length) {
+                        throw new Error(`Görsel ${i + 1} boş.`);
+                    }
+
+                    const resizedBuffer = await sharp(inputBuffer)
+                        .rotate()
+                        .resize(511, 511, {
+                            fit: 'inside',
+                            withoutEnlargement: true,
+                        })
+                        .png()
+                        .toBuffer();
+
+                    const mimeType = 'image/png';
+                    const bytes = resizedBuffer;
 
                     if (!bytes.length) {
                         throw new Error(`Görsel ${i + 1} boş.`);
