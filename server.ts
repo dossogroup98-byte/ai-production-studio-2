@@ -1250,28 +1250,34 @@ async function startServer() {
         });
       }
 
-      const instruction = [
-        'You are a professional AI image and video prompt engineer.',
-        'Return ONLY valid JSON. No markdown fences or explanations.',
-        'JSON schema: {"turkishPrompt":"...","englishPrompt":"...","startPromptTR":"...","startPromptEN":"...","endPromptTR":"...","endPromptEN":"..."}',
-        'Write natural, specific, production-ready prompts.',
-        'Preserve any requested identity, face geometry, age, hairstyle, beard, clothing, and scene continuity. Do not invent identity changes.',
-        `Action: ${String(action)}`,
-        `Prompt type: ${String(promptType)}`,
-        `Create separate start and end frame prompts: ${Boolean(startEnd)}`,
-        `User request: ${description.trim()}`,
-        `Existing Turkish prompt: ${String(turkishPrompt)}`,
-        `Existing English prompt: ${String(englishPrompt)}`,
-        'Write the Turkish and English prompts with equivalent meaning.',
-        startEnd
-          ? 'Also provide separate START and END frame prompts in both languages. Keep the same character identity and scene continuity while making the end frame a plausible progression from the start frame.'
-          : 'If start/end prompts are not requested, return empty strings for all start/end fields.',
-        action === 'create'
-          ? 'Create a complete prompt from scratch based on the user request.'
-          : action === 'video'
-            ? 'Focus on temporal progression, subject motion, camera movement, and a coherent video shot.'
-            : 'Improve the existing prompt/request while preserving its intent and constraints.',
-      ].join('\n');
+        const instruction = [
+            'You are a professional AI image and video prompt engineer.',
+            'Return ONLY valid JSON. No markdown fences or explanations.',
+            'JSON schema: {"turkishPrompt":"...","englishPrompt":"...","startPromptTR":"...","startPromptEN":"...","endPromptTR":"...","endPromptEN":"..."}',
+            'Write natural, specific, production-ready prompts.',
+            'CRITICAL: Preserve every explicit user requirement. Never silently remove, weaken, or contradict a user instruction when improving a prompt.',
+            'IDENTITY AND REFERENCE IMAGE: If the user mentions or requests a reference image, reference photo, uploaded image, or their own photo, explicitly preserve this requirement in BOTH Turkish and English prompts.',
+            'For reference-image requests, the English prompt must explicitly state: "Use the provided reference image as the primary visual and identity reference. Preserve the same person and recognizable facial identity. Keep the original facial geometry, eyes, eyebrows, nose, lips, jawline, skin tone, apparent age, hairstyle, and facial hair consistent with the reference. Do not replace the person, invent a different face, or alter their identity."',
+            'Translate the reference-image requirement faithfully into Turkish. When start/end prompts are requested, repeat the identity-preservation requirement in each relevant start and end prompt in both languages.',
+            'The reference photo is an identity source, not an image to paste, insert, or display inside the generated scene, unless the user explicitly requests that effect.',
+            'If the user requests a reference image but no image is attached to this prompt-generation request, preserve the instruction for the external image/video generation tool. Do not claim that an image was actually supplied.',
+            'Preserve requested identity, face geometry, age, hairstyle, beard, clothing, action, and scene continuity. Do not invent identity changes.',
+            `Action: ${String(action)}`,
+            `Prompt type: ${String(promptType)}`,
+            `Create separate start and end frame prompts: ${Boolean(startEnd)}`,
+            `User request: ${description.trim()}`,
+            `Existing Turkish prompt: ${String(turkishPrompt)}`,
+            `Existing English prompt: ${String(englishPrompt)}`,
+            'Write Turkish and English prompts with equivalent meaning. English must not omit reference-image, identity, scene, action, or camera constraints present in the Turkish prompt or original request.',
+            startEnd
+                ? 'Provide separate START and END frame prompts in both languages. Keep the same identity and scene continuity, make the end frame a plausible progression, and preserve the reference-image identity requirements in both frames.'
+                : 'If start/end prompts are not requested, return empty strings for all start/end fields.',
+            action === 'create'
+                ? 'Create a complete prompt from scratch based on the user request.'
+                : action === 'video'
+                    ? 'Focus on temporal progression, subject motion, camera movement, and a coherent video shot.'
+                    : 'Improve the existing prompt/request while preserving its intent and constraints. Strengthen clarity without changing the requested meaning.',
+        ].join('\n');
 
       const response = await fetch(
         'https://generativelanguage.googleapis.com/v1beta/interactions',
