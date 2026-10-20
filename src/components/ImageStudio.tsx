@@ -8,7 +8,7 @@ interface ImageStudioProps {
 }
 
 export const ImageStudio: React.FC<ImageStudioProps> = ({ onItemCreated }) => {
-  const [tab, setTab] = useState<'t2i' | 'i2i'>('t2i');
+  const [tab, setTab] = useState<'t2i' | 'i2i' | 'i2i-plus'>('t2i');
   const [prompt, setPrompt] = useState('Studio portrait of a visionary astronaut, dramatic volumetric neon lighting, cinematic 8k octane render');
   const [model, setModel] = useState('@cf/black-forest-labs/flux-1-schnell');
   const [numSteps, setNumSteps] = useState(4);
@@ -19,6 +19,11 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ onItemCreated }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [base64Image, setBase64Image] = useState<string | null>(null);
+  const [identityCrop, setIdentityCrop] = useState<string | null>(null);
+  const [cropRect, setCropRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const cropImageRef = useRef<HTMLImageElement>(null);
+  const cropStartRef = useRef<{ x: number; y: number } | null>(null);
+  const cropDraggingRef = useRef(false);
 
   const [loading, setLoading] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
@@ -86,22 +91,111 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ onItemCreated }) => {
     }
   };
 
+    const getCropPoint = (clientX: number, clientY: number) => {
+        const img = cropImageRef.current;
+        if (!img) return null;
+
+        const rect = img.getBoundingClientRect();
+
+        return {
+            x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+            y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+        };
+    };
+
+    const handleCropPointerDown = (e: React.PointerEvent<HTMLImageElement>) => {
+        const point = getCropPoint(e.clientX, e.clientY);
+        if (!point) return;
+
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        cropStartRef.current = point;
+        cropDraggingRef.current = true;
+        setIdentityCrop(null);
+        setCropRect({ x: point.x, y: point.y, w: 0, h: 0 });
+    };
+
+    const handleCropPointerMove = (e: React.PointerEvent<HTMLImageElement>) => {
+        if (!cropDraggingRef.current || !cropStartRef.current) return;
+
+        const point = getCropPoint(e.clientX, e.clientY);
+        if (!point) return;
+
+        const start = cropStartRef.current;
+
+        setCropRect({
+            x: Math.min(start.x, point.x),
+            y: Math.min(start.y, point.y),
+            w: Math.abs(point.x - start.x),
+            h: Math.abs(point.y - start.y),
+        });
+    };
+
+    const handleCropPointerUp = (e: React.PointerEvent<HTMLImageElement>) => {
+        if (!cropDraggingRef.current || !cropStartRef.current) return;
+
+        cropDraggingRef.current = false;
+
+        const point = getCropPoint(e.clientX, e.clientY);
+        const start = cropStartRef.current;
+        cropStartRef.current = null;
+
+        const img = cropImageRef.current;
+        if (!point || !img) return;
+
+        const x = Math.min(start.x, point.x);
+        const y = Math.min(start.y, point.y);
+        const w = Math.abs(point.x - start.x);
+        const h = Math.abs(point.y - start.y);
+
+        if (w < 0.02 || h < 0.02) {
+            setCropRect(null);
+            setIdentityCrop(null);
+            return;
+        }
+
+        const sx = Math.round(x * img.naturalWidth);
+        const sy = Math.round(y * img.naturalHeight);
+        const sw = Math.max(1, Math.round(w * img.naturalWidth));
+        const sh = Math.max(1, Math.round(h * img.naturalHeight));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = sw;
+        canvas.height = sh;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            setErrorMsg('Kırpma işlemi başlatılamadı.');
+            return;
+        }
+
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+        setIdentityCrop(canvas.toDataURL('image/png'));
+    };
+
   const handleGenerate = async () => {
     if (!prompt.trim()) {
       setErrorMsg('Görsel için bir açıklama (prompt) girin.');
       return;
     }
 
-    if (tab === 'i2i') {
-      if (!base64Image) {
-        setErrorMsg('Görselden görsele (I2I) üretim için bilgisayarınızdan bir referans görsel seçmelisiniz.');
-        return;
+      if (tab === 'i2i') {
+          if (!base64Image) {
+              setErrorMsg('Görselden görsele (I2I) üretim için bilgisayarınızdan bir referans görsel seçmelisiniz.');
+              return;
+          }
+
+          if (!currentModelObj.supportsI2I) {
+              setErrorMsg(`${currentModelObj.name} modeli Cloudflare Workers AI üzerinde I2I desteklemez. Lütfen I2I destekleyen bir model seçin.`);
+              return;
+          }
       }
-      if (!currentModelObj.supportsI2I) {
-        setErrorMsg(`${currentModelObj.name} modeli Cloudflare Workers AI üzerinde I2I desteklemez. Lütfen 'Stable Diffusion XL 1.0' seçin.`);
-        return;
+
+      // I2I+ kontrolü ayrı olmalı
+      if (tab === 'i2i-plus' && !identityCrop) {
+          setErrorMsg('Önce fotoğraf yükleyip yüz bölgesini fareyle seçmelisiniz.');
+          return;
       }
-    }
 
     setLoading(true);
     setErrorMsg(null);
@@ -118,7 +212,12 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ onItemCreated }) => {
     }
 
     try {
-      const endpoint = tab === 't2i' ? `${baseUrl}/api/studio/t2i` : `${baseUrl}/api/studio/i2i`;
+        const endpoint =
+            tab === 't2i'
+                ? `${baseUrl}/api/studio/t2i`
+                : tab === 'i2i-plus'
+                    ? `${baseUrl}/api/studio/i2i-plus`
+                    : `${baseUrl}/api/studio/i2i`;
       const payload: any = {
         prompt: prompt.trim(),
         model,
@@ -126,10 +225,15 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ onItemCreated }) => {
         guidance,
       };
 
-      if (tab === 'i2i') {
-        payload.imageData = base64Image;
-        payload.strength = strength;
-      }
+        if (tab === 'i2i') {
+            payload.imageData = base64Image;
+            payload.strength = strength;
+        }
+
+        if (tab === 'i2i-plus') {
+            payload.imageData = identityCrop;
+            payload.strength = strength;
+        }
 
       if (tab === 'i2i') setI2iStage('2/4 İstek gönderildi');
       const requestPromise = fetch(endpoint, {
@@ -223,7 +327,25 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ onItemCreated }) => {
             >
               <Upload className="w-4 h-4" />
               <span>Görselden Görsele (I2I)</span>
-            </button>
+                      </button>
+
+                      <button
+                          type="button"
+                          onClick={() => {
+                              setTab('i2i-plus');
+                              setModel('@cf/black-forest-labs/flux-2-klein-4b');
+                              setErrorMsg(null);
+                              setIdentityCrop(null);
+                              setCropRect(null);
+                          }}
+                          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${tab === 'i2i-plus'
+                                  ? 'bg-indigo-600 text-white shadow-md'
+                                  : 'text-zinc-400 hover:text-white'
+                              }`}
+                      >
+                          <Upload className="w-4 h-4" />
+                          <span>Görselden Görsele (I2I+)</span>
+                      </button>
           </div>
 
           {/* If I2I: Real Browse / File Picker */}
@@ -291,6 +413,112 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ onItemCreated }) => {
               )}
             </div>
           )}
+
+
+                  {/* I2I+ Identity Crop */}
+                  {tab === 'i2i-plus' && (
+                      <div className="space-y-3">
+                          <label className="block text-xs font-semibold text-zinc-200">
+                              Yüz, saç, sakal ve boyun bölgesini fareyle seçin
+                          </label>
+
+                          <input
+                              type="file"
+                              ref={fileInputRef}
+                              onChange={(e) => {
+                                  handleFileChange(e);
+                                  setIdentityCrop(null);
+                                  setCropRect(null);
+                              }}
+                              accept="image/png,image/jpeg,image/webp"
+                              className="hidden"
+                          />
+
+                          {!previewUrl ? (
+                              <button
+                                  type="button"
+                                  onClick={() => fileInputRef.current?.click()}
+                                  className="w-full border-2 border-dashed border-zinc-700 hover:border-indigo-500 rounded-xl p-8 text-center text-sm text-zinc-300"
+                              >
+                                  <Upload className="w-5 h-5 mx-auto mb-2" />
+                                  Referans fotoğrafını seç
+                              </button>
+                          ) : (
+                              <>
+                                  <div className="relative inline-block max-w-full overflow-hidden rounded-xl border border-zinc-700 bg-black">
+                                      <img
+                                          ref={cropImageRef}
+                                          src={previewUrl}
+                                          alt="Yüz kırpma referansı"
+                                          draggable={false}
+                                          onPointerDown={handleCropPointerDown}
+                                          onPointerMove={handleCropPointerMove}
+                                          onPointerUp={handleCropPointerUp}
+                                          onPointerCancel={() => {
+                                              cropDraggingRef.current = false;
+                                              cropStartRef.current = null;
+                                          }}
+                                          className="block max-h-[420px] max-w-full w-auto select-none cursor-crosshair touch-none"
+                                      />
+
+                                      {cropRect && (
+                                          <div
+                                              className="absolute border-2 border-emerald-400 bg-emerald-400/10 pointer-events-none"
+                                              style={{
+                                                  left: `${cropRect.x * 100}%`,
+                                                  top: `${cropRect.y * 100}%`,
+                                                  width: `${cropRect.w * 100}%`,
+                                                  height: `${cropRect.h * 100}%`,
+                                              }}
+                                          />
+                                      )}
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-2">
+                                      <button
+                                          type="button"
+                                          onClick={() => fileInputRef.current?.click()}
+                                          className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200"
+                                      >
+                                          Başka fotoğraf seç
+                                      </button>
+
+                                      <button
+                                          type="button"
+                                          onClick={() => {
+                                              setIdentityCrop(null);
+                                              setCropRect(null);
+                                          }}
+                                          className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200"
+                                      >
+                                          Seçimi temizle
+                                      </button>
+                                  </div>
+
+                                  {identityCrop && (
+                                      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                                          <p className="text-xs text-emerald-300 mb-2">
+                                              Kimlik kırpımı hazır
+                                          </p>
+                                          <img
+                                              src={identityCrop}
+                                              alt="Kırpılmış kimlik referansı"
+                                              className="max-h-40 rounded-lg border border-zinc-700"
+                                          />
+                                      </div>
+                                  )}
+
+                                  <p className="text-[11px] text-zinc-500">
+                                      Fareyle yüzün çevresinden başlayıp saç, sakal ve boynu da kapsayacak şekilde sürükleyin.
+                                  </p>
+                              </>
+                          )}
+                      </div>
+                  )}
+
+
+
+
 
           {/* Model Selector */}
           <div>
@@ -455,7 +683,12 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ onItemCreated }) => {
           {/* Submit */}
           <button
             onClick={handleGenerate}
-            disabled={loading || !prompt.trim() || (tab === 'i2i' && (!base64Image || !currentModelObj.supportsI2I))}
+                      disabled={
+                          loading ||
+                          !prompt.trim() ||
+                          (tab === 'i2i' && (!base64Image || !currentModelObj.supportsI2I)) ||
+                          (tab === 'i2i-plus' && (!identityCrop || !currentModelObj.supportsI2I))
+                      }
             className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-amber-500 hover:from-indigo-500 hover:to-amber-400 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 disabled:opacity-50 transition-all"
           >
             {loading ? (
@@ -467,7 +700,11 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ onItemCreated }) => {
               <>
                 <Sparkles className="w-4 h-4" />
                 <span>
-                  {tab === 't2i' ? 'Metinden Görsel Üret' : 'Seçilen Görsel Üzerinden Dönüştür (I2I)'}
+                                      {tab === 't2i'
+                                          ? 'Metinden Görsel Üret'
+                                          : tab === 'i2i-plus'
+                                              ? 'Seçilen Yüzle Görsel Üret (I2I+)'
+                                              : 'Seçilen Görsel Üzerinden Dönüştür (I2I)'}
                 </span>
               </>
             )}

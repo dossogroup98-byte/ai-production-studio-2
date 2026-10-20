@@ -370,6 +370,141 @@ async function startServer() {
     });
 
 
+    // ---------------- Cloudflare Image-to-Image Plus ----------------
+    app.post('/api/studio/i2i-plus', async (req: Request, res: Response) => {
+        try {
+            const { prompt, imageData, strength = 0.75 } = req.body;
+
+            if (typeof prompt !== 'string' || !prompt.trim()) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Prompt is required.',
+                });
+            }
+
+            if (typeof imageData !== 'string' || !imageData.trim()) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Cropped identity image is required.',
+                });
+            }
+
+            const account = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+            const token = (process.env.CLOUDFLARE_API_TOKEN || '').trim();
+
+            if (!account || !token) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Cloudflare credentials are not configured.',
+                });
+            }
+
+            const mime = imageData.match(
+                /^data:(image\/[a-zA-Z0-9.+-]+);base64,/
+            )?.[1] || 'image/png';
+
+            const cleanB64 = imageData.replace(/^data:[^,]*;base64,/, '');
+            const imageBuffer = Buffer.from(cleanB64, 'base64');
+
+            if (!imageBuffer.length || imageBuffer.length > 10 * 1024 * 1024) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid image or image exceeds 10 MB.',
+                });
+            }
+
+            const identityPrompt =
+                'Use the provided cropped reference as the primary authority for the ' +
+                'person identity. Preserve recognizable facial geometry, eyes, nose, ' +
+                'lips, hairline, hairstyle and facial hair. Do not copy the original ' +
+                'photo pose or background. Naturally recompose the person in the ' +
+                'requested scene with coherent pose, lighting and shadows. ' +
+                'Keep the identity recognizable. Scene instructions: ' +
+                prompt.trim();
+
+            const form = new FormData();
+            form.append('prompt', identityPrompt);
+            form.append(
+                'input_image_0',
+                new Blob([new Uint8Array(imageBuffer)], { type: mime }),
+                'identity-crop.png'
+            );
+
+            const numericStrength = Number(strength);
+            form.append(
+                'guidance',
+                String(
+                    Number.isFinite(numericStrength)
+                        ? Math.min(Math.max(numericStrength * 10, 1), 20)
+                        : 7.5
+                )
+            );
+
+            const cfResp = await fetch(
+                `https://api.cloudflare.com/client/v4/accounts/${account}/ai/run/@cf/black-forest-labs/flux-2-klein-4b`,
+                {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                    body: form,
+                }
+            );
+
+            if (!cfResp.ok) {
+                const detail = await cfResp.text();
+                console.error('[I2I+ Cloudflare]', cfResp.status, detail.slice(0, 500));
+
+                return res.status(cfResp.status).json({
+                    success: false,
+                    error: `Cloudflare HTTP ${cfResp.status}: ${detail.slice(0, 300)}`,
+                });
+            }
+
+            const contentType = cfResp.headers.get('content-type') || '';
+
+            if (contentType.toLowerCase().includes('image/')) {
+                const bytes = Buffer.from(await cfResp.arrayBuffer());
+
+                return res.json({
+                    success: true,
+                    image_url: `data:${contentType};base64,${bytes.toString('base64')}`,
+                    provider: 'cloudflare',
+                    model: '@cf/black-forest-labs/flux-2-klein-4b',
+                });
+            }
+
+            const result = await cfResp.json() as any;
+            const image = result?.result?.image ?? result?.image;
+
+            if (typeof image === 'string' && image.length > 0) {
+                return res.json({
+                    success: true,
+                    image_url: image.startsWith('data:')
+                        ? image
+                        : `data:image/jpeg;base64,${image}`,
+                    provider: 'cloudflare',
+                    model: '@cf/black-forest-labs/flux-2-klein-4b',
+                });
+            }
+
+            return res.status(502).json({
+                success: false,
+                error: 'Cloudflare response did not contain an image.',
+            });
+        } catch (err: any) {
+            console.error('[I2I+ Error]', err);
+
+            return res.status(500).json({
+                success: false,
+                error: err instanceof Error ? err.message : 'I2I+ failed.',
+            });
+        }
+    });
+
+
+
+
+
+
   // ---------------- Status Polling Endpoint (Real Status) ----------------
   app.get('/api/studio/status/:jobId', async (req: Request, res: Response) => {
     const { jobId } = req.params;
