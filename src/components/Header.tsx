@@ -100,6 +100,31 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setTab, openSettings
             <FolderArchive className="w-3.5 h-3.5" />
             <span>Library ({itemCount})</span>
           </button>
+          <div className="relative">
+            <details className="relative">
+              <summary className="cursor-pointer list-none flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:bg-zinc-800">
+                TAAFT <span>▾</span>
+              </summary>
+              <div className="absolute top-full left-0 mt-2 min-w-44 rounded-xl border border-zinc-700 bg-zinc-900 p-1 shadow-xl z-50">
+                <a
+                  href="https://theresanaiforthat.com/@taaft/image-generator/?ref=header"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full rounded-lg px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                >
+                  I_TAAFT Image
+                </a>
+                <a
+                  href="https://theresanaiforthat.com/@taaft/video-generator/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full rounded-lg px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                >
+                  I_TAAFT Video
+                </a>
+              </div>
+            </details>
+          </div>
         </nav>
 
         {/* Right Settings */}
