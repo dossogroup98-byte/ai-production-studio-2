@@ -25,7 +25,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setTab, openSettings
                 PROD v2.0
               </span>
             </div>
-            <p className="text-xs text-zinc-400 hidden sm:block">AGNES Video â€¢ Hedra Avatars â€¢ Cloudflare AI</p>
+            <p className="text-xs text-zinc-400 hidden sm:block">AGNES Video &#8226; Hedra Avatars &#8226; Cloudflare AI</p>
           </div>
         </div>
 
@@ -126,6 +126,16 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setTab, openSettings
             <FolderArchive className="w-3.5 h-3.5" />
             <span>Library ({itemCount})</span>
           </button>
+
+          <a
+            href="https://v2fun.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-zinc-400 hover:text-violet-300 hover:bg-zinc-800/60"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>V2Fun Qwen ↗</span>
+          </a>
 
         </nav>
 
